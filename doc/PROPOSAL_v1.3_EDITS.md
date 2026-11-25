@@ -47,7 +47,7 @@
 **A-7. §3.1 Confirmed information**
 - Строка «Ownership of device firmware | SIG» → «Device firmware — Cooler controller: SIG. Communication board: developed by Hydracom SIA, rights transferred per Section 7.1.»
 - Строка «Hardware error code documentation | Exists (current documentation); connectivity error codes do not exist and will be defined in this project» → «Error code directory — Compiled in this project from the device and the existing application, including connectivity error codes; existing SIG documentation, where available, is used as input.»
-- Добавить строку: «Over-the-air firmware update | Supported by the device. Implemented in the communication board firmware and disabled by default; enabled per device only on SIG's decision»
+- Добавить строку: «Over-the-air firmware update | Hydracom SIA implements OTA with rollback in the new communication board firmware. The existing build has a single application partition and rollback is disabled. The new firmware is first installed on each pilot device over a wired connection. Stage 1 bench tests verify flash capacity for two application images and persistent buffers, successful OTA and rollback after a failed update. OTA is disabled by default and enabled per device only on SIG's decision.»
 - Добавить строку: «Communication board | ESP32-C3-based; the existing firmware source and command table are provided by SIG and used as the starting point»
 
 **A-8. §6.3 Not included**
@@ -58,11 +58,12 @@
 
 **A-9. §4.5 Device communication and protocol — первый абзац**
 - Сейчас: «Hydracom SIA develops it jointly with SIG as the first deliverable of the project.»
-- Предлагается: «Hydracom SIA develops it from the analysis of the device and agrees it with SIG as the first deliverable of the project. On the device side, the communication board firmware implements the protocol, buffers telemetry and events during connectivity loss (up to 72 hours), executes operating schedules locally and supports over-the-air update with rollback, disabled by default and enabled on SIG's decision.»
+- Предлагается: «Hydracom SIA develops it from the analysis of the device and agrees it with SIG as the first deliverable of the project. On the device side, the communication board firmware implements the protocol, buffers telemetry and events during connectivity loss (up to 72 hours), executes operating schedules locally and supports over-the-air update with rollback, disabled by default and enabled on SIG's decision. The firmware retains the existing BLE commands for compatibility with the CoolTouch app. For commands supported by the platform, MQTT carries the same command string in the `cmd` field, for example `POST hottank:1`. BLE and MQTT share the same command parser and execution logic. BLE replies preserve the format expected by CoolTouch. Over MQTT, the firmware acknowledges receipt and reports the outcome using the same `cmd_id`. For `GET all`, a fresh telemetry frame with that `cmd_id` serves as the final response.»
+- Строки команд приведены в [таблице команд Stage 1 (§7.3)](STAGE1_SPEC.md#73-временный-кадр-телеметрии-и-команды).
 
-**A-10. A-06 — убрать допущение, OTA подтверждено**
+**A-10. A-06 — заменить допущение проверкой OTA на стенде**
 - Сейчас: «The device module and bootloader support over-the-air firmware updates.»; последствие: «This was not confirmed in response no. 5 and is carried as an open item to be confirmed before contract signature.» и «If the hardware does not support OTA, requirement S-010 cannot be delivered and is removed from Stage 2.»
-- Предлагается: удалить A-06 (перенесено в §3.1, правка A-7). Номер A-06 оставить пустым «— (moved to Section 3.1)», чтобы не сдвигать ссылки.
+- Предлагается: «OTA with rollback is implemented in the new communication board firmware and validated on the pilot hardware in Stage 1 (Section 3.1). Fleet rollout from the SIG portal (S-010) is delivered in Stage 2.» Последствие: «Any hardware limitation identified on the test bench and its impact on S-010 are agreed with SIG under Section 7.3.»
 
 ---
 
@@ -123,19 +124,20 @@
 
 **D-1. Новый раздел §2.7 «Acceptance criteria»**
 - Предлагается:
-  «Section 14 of the specification applies as amended by Sections 2.4 and 2.6:
-  — Commands: pasteurisation start and temperature setpoints are replaced by heating on/off and cooling on/off;
-  — Water counters: total water consumption, aggregated over a period, replaces four separate water types;
-  — SIG portal: quality/RMA is out of scope;
-  — eSIM/LTE: per the stage table in Section 1.
-  Pilot acceptance (Stage 1): the pilot devices (ten, or the number delivered under A-04) run the delivered communication board firmware and transmit heartbeat and telemetry over LTE for seven consecutive days with no more than 1 % of frames missing; devices recover automatically after power loss and connectivity loss and deliver buffered data; a request for current data returns within 30 seconds for an online device; Stage 1 commands are delivered, executed and logged with their result; alerts are raised per the agreed rules; End Users see and control only their own coolers; scenarios E2E-01, 02, 03, 04, 06 and 07 pass on real devices.»
+  «Section 14 of the specification applies as amended by Sections 2.4 and 2.6.
+  — Remote pasteurisation start is excluded. Heating on/off and cooling on/off replace temperature setpoint commands.
+  — Total water consumption, aggregated over a period, replaces separate counters for four water types.
+  — Pasteurisation logs, filters, KPI and error alerts (V-064, V-092, V-093, V-118) depend on controller signals. If bench testing confirms that these signals are absent, the affected functions are accepted separately once SIG provides the signals (A-27).
+  — Quality/RMA is outside the scope of the SIG portal.
+  — eSIM/LTE acceptance follows the stage table in Section 1.
+  For Stage 1 acceptance, the pilot devices (ten, or the number delivered under A-04) run the delivered communication board firmware and transmit heartbeat and telemetry over LTE for seven consecutive days with no more than 1 % of frames missing. Devices recover automatically after power loss and connectivity loss and deliver buffered data. All Stage 1 MQTT commands to online devices, including requests for current data, have a single 30-second deadline measured from command creation, including retries. The platform logs the outcome. A heating or cooling command succeeds only when the cooler controller reports the requested state over UART. A general shutdown requires confirmation that both heating and cooling are off. Alerts are raised per the agreed rules. End Users see and control only their own coolers. Scenarios E2E-01, 02, 03, 04, 06 and 07 pass on real devices.»
 - Почему: сейчас при приёмке будут проверять по разделу 14 ТЗ — с пастеризацией, уставками и четырьмя типами воды.
 
 **D-2. §2.3 — добавить результат работ**
 - Предлагается: «Test results and pilot launch report on real devices (Section 13 of the specification)»
 
 **D-3. Время ответа — §4.5 или §5.2**
-- Предлагается: «Response times of Section 12 of the specification — on-demand request ≤ 30 s and command ≤ 30 s for an online device — are measured during the pilot. Delays caused by the mobile network outside the platform are reported separately.»
+- Предлагается: «Measure the response times required by Section 12 during the pilot. For every MQTT command to a device that is online when the command is created, the platform allows 30 seconds from creation, including retries. The receipt acknowledgement leaves the deadline unchanged. Measure until the platform receives the final result with the same `cmd_id`. For `GET all`, measure until the platform applies the fresh telemetry frame with that `cmd_id`. The platform records a timeout if the result is missing or the fresh frame has yet to be applied at the deadline. For heating, cooling and general shutdown, also measure the UART interval on the communication board from the first UART command to the last required controller confirmation. If the requested state already holds, measure from the start of the fresh state check. Record both measurements under the same `cmd_id`. The platform measurement determines whether the command finished in time. Report mobile network delays separately.»
 
 **D-4. A-15**
 - Сейчас: «Acceptance of each milestone is completed within ten business days of delivery.» и «Longer acceptance cycles extend the schedule and are treated as customer-side delay.»
@@ -151,8 +153,8 @@
 | ID | Assumption | Consequence if it does not hold |
 |---|---|---|
 | A-16 | End User accounts are created by the operator (VENDEN) by e-mail invitation; there is no self-registration. An End User is linked to a client and sees all coolers of that client; a client may have several End Users. | Self-registration or device-level linking is a change request. |
-| A-17 | End Users may reset the filter resource and the consumption counter with double confirmation. The device water counter is cumulative and is never reset; a consumption reset sets a reference point on the platform. The operator sees every reset in the device log. | Operator approval of resets is a change request. |
-| A-18 | The device reports one cumulative total water counter. If the device also reports liters by water type, they are stored for analytics; all user interfaces show total consumption only (Section 2.6, item 2). | Showing water types in the interface is a change request. |
+| A-17 | End Users may reset the filter resource and the consumption counter with double confirmation. The new communication board firmware keeps the cumulative device water total across filter resets and bottle replacements, including when these actions are performed over Bluetooth. A consumption reset sets a reference point on the platform. The operator sees every reset in the device log. | Operator approval of resets is a change request. |
+| A-18 | The device reports one cumulative water total in litres. For top-loading models, the board estimates consumption by adding the configured bottle volume when a bottle is installed. For plumbed-in models and bottom-loading models without carbonation, the board uses the controller's `WCS` readings. Bench testing verifies the source signal and its units for each pilot model. If the device provides measured volumes by water type, they are stored for analytics. All user interfaces show total consumption only (Section 2.6, item 2). | If a pilot model has no usable source, agree the data source and its impact on acceptance with SIG. Showing water types in the interface is a change request. |
 | A-19 | Operating schedules are stored on the platform and executed locally by the communication board firmware, so they work without connectivity. | — |
 | A-20 | Default thresholds (offline time, water temperature limits, filter warning levels) are set by Hydracom SIA in the working specification and are editable in platform settings by the operator. | — |
 | A-21 | The permission matrix for the VENDEN roles and End User is defined in the working specification and delivered with the technical documentation. Changes after the start of Stage 1 follow Section 7.3. | — |
@@ -161,7 +163,7 @@
 | A-24 | Bluetooth remains on the device; the current application and technicians' on-site access keep working with the new communication board firmware. | Removing Bluetooth reduces scope. |
 | A-25 | The English interface texts of the End User portal are part of the delivered software; SIG/VENDEN provide the Latvian, Russian, Estonian and Lithuanian translations, and any customer-facing wording they want to change, by 31 January 2027. | Late translations delay acceptance of the affected languages only. |
 | A-26 | For the pilot, device certificates are written by Hydracom SIA on its test bench. Certificate provisioning in series production at the SIG factory is not included. | Factory provisioning is a change request. |
-| A-27 | The cooler controller reports pasteurisation start, end, result and errors over its interface to the communication board. The existing interface does not carry these signals; if the device analysis confirms they are absent, SIG adds them to the cooler controller firmware. | Until then, the pasteurisation log, KPI and alerts (V-064, V-092, V-093, V-118) cannot be delivered and are accepted after SIG provides the signals. |
+| A-27 | The communication board needs controller signals for pasteurisation start, end, result and errors. No handlers for these signals were found in the supplied communication board source. Bench testing verifies which signals the cooler controller provides. If testing confirms that any are absent, SIG adds them to the cooler controller firmware. | If signals are missing, the affected pasteurisation log, log filters, KPI and error alerts (V-064, V-092, V-093, V-118) are accepted separately once SIG provides the required signals (Section 2.7). |
 
 **E-1. A-08 — дописать:** «Domain names for the portals and the sender address for account e-mails are provided by SIG by 15 January 2027.»
 
@@ -169,6 +171,10 @@
 - Сейчас: «Confirmation requested from SIG before Stage 2 starts.»
 - Предлагается: «Onboarding an operator that requires development (for example, a different device type or protocol) is a change request.»
 - Почему: в колонке последствий стоит не последствие.
+
+**E-3. A-05 — совместимость команд BLE и MQTT**
+- Сейчас: «The LTE protocol inherits the command semantics, counter model, filter model and error codes of the existing COOLTOUCH Bluetooth application.»
+- Предлагается: «For existing CoolTouch commands reused over MQTT, the firmware retains the BLE command names and syntax. The board shares command parsing and execution between BLE and MQTT and formats replies for each channel. The agreed device protocol specifies command effects, counter and filter behaviour, error codes, and the conditions for a successful result (Section 4.5).»
 
 ---
 
