@@ -58,13 +58,21 @@
 
 **A-9. §4.5 Device communication and protocol — первый абзац**
 - Сейчас: «Hydracom SIA develops it jointly with SIG as the first deliverable of the project.»
-- Предлагается: «Hydracom SIA develops it from the analysis of the device and agrees it with SIG as the first deliverable of the project. On the device side, the communication board firmware implements the protocol, buffers telemetry and events during connectivity loss (up to 72 hours), executes operating schedules locally and supports over-the-air update with rollback, disabled by default and enabled on SIG's decision. The firmware retains the existing BLE commands for compatibility with the CoolTouch app. For commands supported by the platform, MQTT carries the same command string in the `cmd` field, for example `POST hottank:1`. BLE and MQTT share the same command parser and execution logic. BLE replies preserve the format expected by CoolTouch. Over MQTT, the firmware acknowledges receipt and reports the outcome using the same `cmd_id`. For `GET all`, a fresh telemetry frame with that `cmd_id` serves as the final response.»
-- Строки команд приведены в [таблице команд Stage 1 (§7.3)](STAGE1_SPEC.md#73-временный-кадр-телеметрии-и-команды).
+- Предлагается: «Hydracom SIA develops it from the analysis of the device and agrees it with SIG as the first deliverable of the project. On the device side, the communication board firmware implements the protocol, buffers telemetry and events during connectivity loss (up to 72 hours), executes operating schedules locally and supports over-the-air update with rollback, disabled by default and enabled on SIG's decision. The firmware retains the existing BLE commands and replies for compatibility with the CoolTouch app. Over MQTT, the platform uses the same command names and values, carried as structured JSON messages; the firmware acknowledges receipt and reports the outcome as a JSON result with the same command identifier. BLE and MQTT share the same command execution logic. For a request for current data, a fresh telemetry frame with that command identifier serves as the final response.»
+- Команды и формат сообщений — в таблице команд рабочего ТЗ Stage 1 (§7.3).
 
 **A-10. A-06 — заменить допущение проверкой OTA на стенде**
 - Сейчас: «The device module and bootloader support over-the-air firmware updates.»; последствие: «This was not confirmed in response no. 5 and is carried as an open item to be confirmed before contract signature.» и «If the hardware does not support OTA, requirement S-010 cannot be delivered and is removed from Stage 2.»
 - Предлагается: «OTA with rollback is implemented in the new communication board firmware and validated on the pilot hardware in Stage 1 (Section 3.1). Fleet rollout from the SIG portal (S-010) is delivered in Stage 2.» Последствие: «Any hardware limitation identified on the test bench and its impact on S-010 are agreed with SIG under Section 7.3.»
 
+
+**A-11. §2.2 и §2.6 п. 1 — «operating modes» у End User**
+- Сейчас (§2.2, строка End User portal): «Own coolers: water consumption, filter resource, resets, power, operating modes and schedule, heating and cooling on/off, language selection, consumer instruction»
+- Предлагается: «Own coolers: water consumption, filter resource, resets, power, energy saving and schedule, heating and cooling on/off, language selection, consumer instruction»
+- Сейчас (§2.6 п. 1): «control power, operating modes and the operating schedule»
+- Предлагается: «control power, energy saving (operation by schedule) and the operating schedule»
+- Почему: у устройства нет режимов работы — только общий вкл/выкл нагрева и охлаждения и энергосбережение
+  (работа по расписанию) (`analysis/BOARD_FIRMWARE.md`, STAGE1_SPEC V-105). Иначе на приёмке будут искать режимы.
 ---
 
 ## B. Обещано то, что исключено
@@ -103,6 +111,8 @@
   - Stage 3: «Scale-out beyond the warranted capacity (Section 4.6) | On demand».
   - Под таблицей: «eSIM/LTE requirements by stage: Stage 1 — C-001, C-002, C-014 and the manual workflow of C-015 (pilot); Stage 2 — C-003…C-013 and the provider API of C-015.»
 - Почему: в ТЗ нет «MVP-2 LTE management»; без таблицы непонятно, какие C-пункты когда сдаются, а заголовок «delivered in full» с «partial» и «on demand» читается против нас.
+  Письмо SIG от 25.11 (`docs/sig/2026-11-25_SIG_email_eSIM_module.md`) перечисляет модуль eSIM целиком —
+  пулы, мониторинг трафика, лимиты, API провайдера; распределение по этапам надо согласовать с SIG явно, до старта.
 
 **C-2. §1.1 — последняя фраза**
 - Сейчас: «The dates for these deliverables will be agreed with SIG at project kick-off.»
@@ -118,6 +128,18 @@
 - Сейчас: Stage 4 — «Within one month after final acceptance»; §6.4 — «A twelve-month warranty period follows final acceptance.»
 - Предлагается в §6.4: «A twelve-month warranty period starts at final acceptance of Stage 2. The consumer instruction (Stage 4) is accepted separately under A-15.»
 
+
+**C-5. Кто выполняет операции eSIM на пилоте**
+- Сейчас: в §2.2 пользователи eSIM/LTE administration — «SIG connectivity manager, VENDEN administrator»; этап, с которого
+  работает роль SIG, не указан. Провайдера eSIM выбирает SIG, услуги связи оплачивает SIG (A-03).
+- Предлагается **[выбрать]**:
+  - (а) на пилоте операции eSIM (реестр, привязка, ручной процесс C-015) выполняет администратор VENDEN; роль SIG
+    connectivity manager — со Stage 2, вместе с порталом SIG. Под таблицей этапов (C-1) дописать: «In Stage 1, eSIM
+    operations are performed by the VENDEN administrator; the SIG connectivity manager role is delivered in Stage 2.»
+  - (б) роль SIG connectivity manager — уже в Stage 1, только для C-001, C-002 и ручного процесса C-015. Дописать:
+    «In Stage 1, the SIG connectivity manager role covers the profile registry, device binding and the manual workflow (C-015).»
+- Почему: письмо SIG называет менеджеров связи SIG пользователями модуля; в рабочем ТЗ Stage 1 этой роли нет.
+  Вариант (б) добавляет в Stage 1 роль, вход SIG в арендатор VENDEN и права на eSIM-операции.
 ---
 
 ## D. Приёмка
@@ -130,14 +152,14 @@
   — Pasteurisation logs, filters, KPI and error alerts (V-064, V-092, V-093, V-118) depend on controller signals. If bench testing confirms that these signals are absent, the affected functions are accepted separately once SIG provides the signals (A-27).
   — Quality/RMA is outside the scope of the SIG portal.
   — eSIM/LTE acceptance follows the stage table in Section 1.
-  For Stage 1 acceptance, the pilot devices (ten, or the number delivered under A-04) run the delivered communication board firmware and transmit heartbeat and telemetry over LTE for seven consecutive days with no more than 1 % of frames missing. Devices recover automatically after power loss and connectivity loss and deliver buffered data. All Stage 1 MQTT commands to online devices, including requests for current data, have a single 30-second deadline measured from command creation, including retries. The platform logs the outcome. A heating or cooling command succeeds only when the cooler controller reports the requested state over UART. A general shutdown requires confirmation that both heating and cooling are off. Alerts are raised per the agreed rules. End Users see and control only their own coolers. Scenarios E2E-01, 02, 03, 04, 06 and 07 pass on real devices.»
+  For Stage 1 acceptance, the pilot devices (ten, or the number delivered under A-04) run the delivered communication board firmware and transmit heartbeat and telemetry over LTE for seven consecutive days with no more than 1 % of frames missing. Devices recover automatically after power loss and connectivity loss and deliver buffered data. Each Stage 1 command to an online device, including a request for current data, completes within 30 seconds of its creation, including retries, and its outcome is logged. For heating, cooling and general on/off commands, the time until the cooler controller reports the new state is measured and logged; such a command succeeds when the communication board confirms that it has applied it; any additional success condition based on the controller report is agreed with SIG under Section 7.3. Alerts are raised per the agreed rules. End Users see and control only their own coolers. Scenarios E2E-01, 02, 03, 04, 06 and 07 pass on real devices.»
 - Почему: сейчас при приёмке будут проверять по разделу 14 ТЗ — с пастеризацией, уставками и четырьмя типами воды.
 
 **D-2. §2.3 — добавить результат работ**
 - Предлагается: «Test results and pilot launch report on real devices (Section 13 of the specification)»
 
 **D-3. Время ответа — §4.5 или §5.2**
-- Предлагается: «Measure the response times required by Section 12 during the pilot. For every MQTT command to a device that is online when the command is created, the platform allows 30 seconds from creation, including retries. The receipt acknowledgement leaves the deadline unchanged. Measure until the platform receives the final result with the same `cmd_id`. For `GET all`, measure until the platform applies the fresh telemetry frame with that `cmd_id`. The platform records a timeout if the result is missing or the fresh frame has yet to be applied at the deadline. For heating, cooling and general shutdown, also measure the UART interval on the communication board from the first UART command to the last required controller confirmation. If the requested state already holds, measure from the start of the fresh state check. Record both measurements under the same `cmd_id`. The platform measurement determines whether the command finished in time. Report mobile network delays separately.»
+- Предлагается: «The response times of Section 12 of the specification — on-demand request ≤ 30 s and command ≤ 30 s for an online device — are measured during the pilot by the platform, from command creation until the result is received; for an on-demand request, until the fresh telemetry frame is received. For heating, cooling and general on/off commands, the time until the cooler controller reports the new state is recorded separately. Delays caused by the mobile network outside the platform are reported separately.»
 
 **D-4. A-15**
 - Сейчас: «Acceptance of each milestone is completed within ten business days of delivery.» и «Longer acceptance cycles extend the schedule and are treated as customer-side delay.»
@@ -174,7 +196,7 @@
 
 **E-3. A-05 — совместимость команд BLE и MQTT**
 - Сейчас: «The LTE protocol inherits the command semantics, counter model, filter model and error codes of the existing COOLTOUCH Bluetooth application.»
-- Предлагается: «For existing CoolTouch commands reused over MQTT, the firmware retains the BLE command names and syntax. The board shares command parsing and execution between BLE and MQTT and formats replies for each channel. The agreed device protocol specifies command effects, counter and filter behaviour, error codes, and the conditions for a successful result (Section 4.5).»
+- Предлагается: «For existing CoolTouch commands reused over MQTT, the firmware retains the BLE command names and values; MQTT messages are structured JSON. The board shares command execution between BLE and MQTT and formats replies for each channel; BLE replies are unchanged. The agreed device protocol specifies command effects, counter and filter behaviour, error codes, and the conditions for a successful result (Section 4.5).»
 
 ---
 
