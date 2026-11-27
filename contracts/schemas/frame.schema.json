@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icooler.local/contracts/v0/frame.schema.json",
+  "title": "Кадр телеметрии, v0 (ТЗ Stage 1 §7.3)",
+  "description": "Устройство → платформа. Раз в 5 минут и внеочередной — по GET all (тогда с cmd_id). Повторы отбрасываются по паре (device_id, seq).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "device_id",
+    "ts",
+    "seq",
+    "cmd_id",
+    "t_hot",
+    "t_cold",
+    "t_hot_set",
+    "t_cold_set",
+    "heat_on",
+    "cool_on",
+    "heat_enabled",
+    "cool_enabled",
+    "power_on",
+    "energy_saving",
+    "water_total_l",
+    "bottle_present",
+    "uvc_on",
+    "co2_ok",
+    "filter_left_pct",
+    "filter_used_l",
+    "filter_days",
+    "idle_days",
+    "past_state",
+    "errors",
+    "rssi",
+    "rsrp",
+    "rsrq",
+    "sinr",
+    "operator",
+    "roaming"
+  ],
+  "properties": {
+    "v": {
+      "$ref": "common.schema.json#/$defs/v"
+    },
+    "device_id": {
+      "$ref": "common.schema.json#/$defs/device_id"
+    },
+    "ts": {
+      "$ref": "common.schema.json#/$defs/ts"
+    },
+    "seq": {
+      "$ref": "common.schema.json#/$defs/seq"
+    },
+    "cmd_id": {
+      "description": "У внеочередного кадра по GET all — команда, по которой он отправлен; иначе null.",
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/cmd_id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "t_hot": {
+      "description": "Факт горячей воды, °C (AT+LOAD=HTT).",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "t_cold": {
+      "description": "Факт холодной воды, °C (AT+LOAD=CTT).",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "t_hot_set": {
+      "description": "Уставка горячей, °C, только чтение (HST).",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "t_cold_set": {
+      "description": "Уставка холодной, °C, только чтение (CST).",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "heat_on": {
+      "description": "Нагрев работает сейчас (HTR).",
+      "type": "boolean"
+    },
+    "cool_on": {
+      "description": "Охлаждение работает сейчас (CLR).",
+      "type": "boolean"
+    },
+    "heat_enabled": {
+      "description": "Нагрев разрешён — флаг платы HOT_ENABLE (POST hottank).",
+      "type": "boolean"
+    },
+    "cool_enabled": {
+      "description": "Охлаждение разрешено — флаг платы COLD_ENABLE (POST coldtank).",
+      "type": "boolean"
+    },
+    "power_on": {
+      "description": "Общий вкл/выкл нагрева и охлаждения (power).",
+      "type": "boolean"
+    },
+    "energy_saving": {
+      "description": "Работа по расписанию включена (energysaving).",
+      "type": "boolean"
+    },
+    "water_total_l": {
+      "description": "Общий объём воды, л, накопительный, не уменьшается (§7.2).",
+      "type": "number",
+      "minimum": 0
+    },
+    "bottle_present": {
+      "description": "Бутыль установлена (BOT); null — модель без сигнала.",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "uvc_on": {
+      "description": "УФ-лампа включена (UVC).",
+      "type": "boolean"
+    },
+    "co2_ok": {
+      "description": "Газ есть (GAS / датчик CO2); null — модель без газированной воды.",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "filter_left_pct": {
+      "description": "Остаток ресурса фильтра, %.",
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "filter_used_l": {
+      "description": "Пролито через фильтр, л.",
+      "type": "number",
+      "minimum": 0
+    },
+    "filter_days": {
+      "description": "Дней с установки фильтра.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "idle_days": {
+      "description": "Дней простоя.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "past_state": {
+      "description": "Состояние пастеризации; null, пока контроллер не передаёт сигналы (A-27).",
+      "enum": [
+        "idle",
+        "running",
+        "done",
+        "error",
+        null
+      ]
+    },
+    "errors": {
+      "description": "Активные ошибки.",
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 64,
+      "items": {
+        "$ref": "common.schema.json#/$defs/error_code"
+      }
+    },
+    "rssi": {
+      "description": "dBm.",
+      "type": "number"
+    },
+    "rsrp": {
+      "description": "dBm.",
+      "type": "number"
+    },
+    "rsrq": {
+      "description": "dB.",
+      "type": "number"
+    },
+    "sinr": {
+      "description": "dB.",
+      "type": "number"
+    },
+    "operator": {
+      "description": "Оператор сети.",
+      "type": "string",
+      "maxLength": 64
+    },
+    "roaming": {
+      "description": "Устройство в роуминге.",
+      "type": "boolean"
+    },
+    "fw": {
+      "description": "Версия прошивки — в первом кадре после старта.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "hw": {
+      "description": "Ревизия железа — в первом кадре после старта.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "v": 0,
+  "cmd_id": "c-91",
+  "code": 200,
+  "checks": {
+    "uart": "ok",
+    "rtc": "ok",
+    "modem": "fail"
+  }
+}

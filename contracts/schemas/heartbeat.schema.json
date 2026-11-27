@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icooler.local/contracts/v0/heartbeat.schema.json",
+  "title": "Heartbeat, v0 (ТЗ Stage 1 §7.3)",
+  "description": "Устройство → платформа, раз в 60 с. Офлайн — нет heartbeat 3 мин (§7.4).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "device_id",
+    "ts"
+  ],
+  "properties": {
+    "v": {
+      "$ref": "common.schema.json#/$defs/v"
+    },
+    "device_id": {
+      "$ref": "common.schema.json#/$defs/device_id"
+    },
+    "ts": {
+      "$ref": "common.schema.json#/$defs/ts"
+    }
+  }
+}
