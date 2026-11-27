@@ -2,13 +2,17 @@
   "name": "@icooler/contracts",
   "version": "0.0.0",
   "private": true,
-  "description": "Контракты сообщений устройства (ТЗ Stage 1 §7.3): JSON Schema и примеры",
+  "description": "Контракты платформы (ТЗ Stage 1): JSON Schema сообщений устройства (§7.3) и OpenAPI (§4, §7.1)",
   "type": "module",
   "scripts": {
-    "test": "node scripts/validate-examples.mjs"
+    "test": "node scripts/validate-examples.mjs && npm run test:openapi",
+    "test:openapi": "redocly lint openapi/openapi.yaml --format=stylish && node scripts/check-openapi.mjs",
+    "docs": "redocly build-docs openapi/openapi.yaml -o openapi/dist/index.html"
   },
   "devDependencies": {
+    "@redocly/cli": "2.77.0",
     "ajv": "8.17.1",
-    "ajv-formats": "3.0.1"
+    "ajv-formats": "3.0.1",
+    "yaml": "2.9.1"
   }
 }

@@ -1,0 +1,17 @@
+{
+  "total": 50,
+  "accepted": 48,
+  "dry_run": false,
+  "errors": [
+    {
+      "row": 7,
+      "column": "serial",
+      "message": "серийник уже есть"
+    },
+    {
+      "row": 19,
+      "column": "imei",
+      "message": "IMEI — 15 цифр"
+    }
+  ]
+}

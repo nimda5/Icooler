@@ -1,0 +1,22 @@
+{
+  "items": [
+    {
+      "id": "00000000-0000-4000-8000-000000000010",
+      "client_id": "00000000-0000-4000-8000-000000000020",
+      "address": "Brīvības iela 1, Rīga",
+      "floor": "3",
+      "place": "Кухня у окна",
+      "status": "working",
+      "filter_left_pct": 99.5
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000011",
+      "client_id": "00000000-0000-4000-8000-000000000020",
+      "address": "Brīvības iela 1, Rīga",
+      "floor": "3",
+      "place": "Кухня у окна",
+      "status": "filter_replace",
+      "filter_left_pct": 4
+    }
+  ]
+}

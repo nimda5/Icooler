@@ -1,0 +1,27 @@
+{
+  "id": "00000000-0000-4000-8000-000000000010",
+  "device_id": "cooler-0001",
+  "serial": "SN-2026-0001",
+  "imei": "356938035643809",
+  "model": {
+    "water_source": "bottle_top",
+    "variant": "A",
+    "carbonated": true,
+    "sku": "SS_BOT_UP_CHA"
+  },
+  "fw": "1.0.0",
+  "hw": "esp32c3-rev1",
+  "cert_thumbprint": "3f7a9c01d2e4b5a6978877665544332211009988",
+  "lifecycle": "installed",
+  "state": "operational",
+  "ownership": "rent",
+  "online": true,
+  "last_seen_at": "2026-12-07T09:00:00Z",
+  "offline_since": null,
+  "blocked": false,
+  "client_id": "00000000-0000-4000-8000-000000000020",
+  "address_id": "00000000-0000-4000-8000-000000000021",
+  "esim_profile_id": "00000000-0000-4000-8000-000000000030",
+  "description": null,
+  "created_at": "2026-12-01T10:00:00Z"
+}

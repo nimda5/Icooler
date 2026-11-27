@@ -1,0 +1,19 @@
+{
+  "id": "00000000-0000-4000-8000-000000000010",
+  "client_id": "00000000-0000-4000-8000-000000000020",
+  "address": "Brīvības iela 1, Rīga",
+  "floor": "3",
+  "place": "Кухня у окна",
+  "status": "working",
+  "filter_left_pct": 99.5,
+  "heat_on": true,
+  "cool_on": true,
+  "heat_enabled": true,
+  "cool_enabled": true,
+  "power_on": true,
+  "energy_saving": false,
+  "not_running_reason": null,
+  "consumption_month_l": 210.0,
+  "since_reset_l": 40.5,
+  "last_reset_at": "2026-12-05T10:00:00Z"
+}

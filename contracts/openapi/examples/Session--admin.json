@@ -1,0 +1,12 @@
+{
+  "user": {
+    "id": "00000000-0000-4000-8000-000000000001",
+    "email": "admin@venden.lv",
+    "name": "Admin VENDEN",
+    "language": "lv",
+    "role": "admin",
+    "tenant_id": "00000000-0000-4000-8000-000000000100"
+  },
+  "csrf_token": "c2VjcmV0LWNzcmYtdG9rZW4",
+  "expires_at": "2026-12-07T21:00:00Z"
+}
