@@ -1,0 +1,8 @@
+{
+  "v": 0,
+  "cmd_id": "c-91",
+  "deadline_at": "2026-12-01T10:08:30Z",
+  "op": "POST",
+  "param": "autopowerscheduling",
+  "value": "w1,08:00,10:00;w1,12:00,18:00;"
+}

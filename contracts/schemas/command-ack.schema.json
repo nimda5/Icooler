@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icooler.local/contracts/v0/command-ack.schema.json",
+  "title": "Подтверждение приёма команды, v0 (ТЗ Stage 1 §7.3)",
+  "description": "Устройство → платформа сразу после приёма команды (и на каждый повтор с тем же cmd_id). Подтверждает только приём.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "cmd_id",
+    "ack"
+  ],
+  "properties": {
+    "v": {
+      "$ref": "common.schema.json#/$defs/v"
+    },
+    "cmd_id": {
+      "$ref": "common.schema.json#/$defs/cmd_id"
+    },
+    "ack": {
+      "const": true
+    }
+  }
+}

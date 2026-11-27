@@ -1,0 +1,344 @@
+{
+  "command--deadline-not-utc": {
+    "base": "command--get-all",
+    "changed": [
+      "/deadline_at"
+    ]
+  },
+  "command--filterreset-0": {
+    "base": "command--post-filterreset",
+    "changed": [
+      "/value"
+    ]
+  },
+  "command--get-serial": {
+    "base": "command--get-all",
+    "changed": [
+      "/param"
+    ]
+  },
+  "command--get-with-value": {
+    "base": "command--get-all",
+    "changed": [
+      "/value"
+    ]
+  },
+  "command--hottank-2": {
+    "base": "command--post-hottank",
+    "changed": [
+      "/value"
+    ]
+  },
+  "command--no-deadline": {
+    "base": "command--get-all",
+    "changed": [
+      "/deadline_at"
+    ]
+  },
+  "command--post-datetime": {
+    "base": "command--post-hottank",
+    "changed": [
+      "/param"
+    ]
+  },
+  "command--post-factoryreset": {
+    "base": "command--post-hottank",
+    "changed": [
+      "/param"
+    ]
+  },
+  "command--post-pin": {
+    "base": "command--post-hottank",
+    "changed": [
+      "/param"
+    ]
+  },
+  "command--post-serial": {
+    "base": "command--post-hottank",
+    "changed": [
+      "/param"
+    ]
+  },
+  "command--post-without-value": {
+    "base": "command--post-hottank",
+    "changed": [
+      "/value"
+    ]
+  },
+  "command--schedule-bad-holiday-index": {
+    "base": "command--post-schedule",
+    "changed": [
+      "/value"
+    ]
+  },
+  "command--schedule-bad-hour": {
+    "base": "command--post-schedule",
+    "changed": [
+      "/value"
+    ]
+  },
+  "command--schedule-duplicate-holiday": {
+    "base": "command--post-schedule",
+    "changed": [
+      "/value"
+    ]
+  },
+  "command--schedule-holiday-end-before-start": {
+    "base": "command--post-schedule",
+    "changed": [
+      "/value"
+    ]
+  },
+  "command--schedule-two-windows-same-day": {
+    "base": "command--post-schedule",
+    "changed": [
+      "/value"
+    ]
+  },
+  "command--schedversion-no-crc": {
+    "base": "command--post-schedversion",
+    "changed": [
+      "/value"
+    ]
+  },
+  "command--text-cmd-v15": {
+    "base": "command--post-hottank",
+    "changed": [
+      "/cmd"
+    ]
+  },
+  "command--timezone-icu-alias": {
+    "base": "command--post-timezone",
+    "changed": [
+      "/value"
+    ]
+  },
+  "command--timezone-not-iana": {
+    "base": "command--post-timezone",
+    "changed": [
+      "/value"
+    ]
+  },
+  "command-ack--false": {
+    "base": "command-ack--basic",
+    "changed": [
+      "/ack"
+    ]
+  },
+  "command-result--200-with-message": {
+    "base": "command-result--ok",
+    "changed": [
+      "/message"
+    ]
+  },
+  "command-result--400-with-applied": {
+    "base": "command-result--deadline-passed",
+    "changed": [
+      "/applied"
+    ]
+  },
+  "command-result--400-without-message": {
+    "base": "command-result--deadline-passed",
+    "changed": [
+      "/message"
+    ]
+  },
+  "command-result--applied-bad": {
+    "base": "command-result--hottank-pushed",
+    "changed": [
+      "/applied"
+    ]
+  },
+  "command-result--code-500": {
+    "base": "command-result--ok",
+    "changed": [
+      "/code"
+    ]
+  },
+  "command-result--get-otaallowed-bad": {
+    "base": "command-result--get-otaallowed",
+    "changed": [
+      "/value"
+    ]
+  },
+  "command-result--param-without-value": {
+    "base": "command-result--get-timezone",
+    "changed": [
+      "/value"
+    ]
+  },
+  "command-result--selftest-bad-status": {
+    "base": "command-result--selftest",
+    "changed": [
+      "/checks"
+    ]
+  },
+  "command-result--text-result-v15": {
+    "base": "command-result--ok",
+    "changed": [
+      "/result"
+    ]
+  },
+  "event--bottle-installed-negative": {
+    "base": "event--bottle-installed",
+    "changed": [
+      "/data/liters_since_last"
+    ]
+  },
+  "event--confirmed-without-uart-ms": {
+    "base": "event--controller-confirmed",
+    "changed": [
+      "/data/uart_ms"
+    ]
+  },
+  "event--error-without-code": {
+    "base": "event--error-raised",
+    "changed": [
+      "/code"
+    ]
+  },
+  "event--past-finished-error-without-code": {
+    "base": "event--past-finished-error",
+    "changed": [
+      "/data/error_code"
+    ]
+  },
+  "event--reboot-bad-reason": {
+    "base": "event--reboot-watchdog",
+    "changed": [
+      "/code"
+    ]
+  },
+  "event--schedule-local-timezone-not-iana": {
+    "base": "event--schedule-applied-local",
+    "changed": [
+      "/data/timezone"
+    ]
+  },
+  "event--schedule-local-without-schedule": {
+    "base": "event--schedule-applied-local",
+    "changed": [
+      "/data/schedule"
+    ]
+  },
+  "event--schedule-local-without-timezone": {
+    "base": "event--schedule-applied-local",
+    "changed": [
+      "/data/timezone"
+    ]
+  },
+  "event--schedule-platform-local-version": {
+    "base": "event--schedule-applied-platform",
+    "changed": [
+      "/data/version"
+    ]
+  },
+  "event--unknown-type": {
+    "base": "event--bottle-removed",
+    "changed": [
+      "/type"
+    ]
+  },
+  "frame--bad-error-code": {
+    "base": "frame--periodic",
+    "changed": [
+      "/errors"
+    ]
+  },
+  "frame--filter-over-100": {
+    "base": "frame--periodic",
+    "changed": [
+      "/filter_left_pct"
+    ]
+  },
+  "frame--missing-water": {
+    "base": "frame--periodic",
+    "changed": [
+      "/water_total_l"
+    ]
+  },
+  "frame--past-state-unknown": {
+    "base": "frame--periodic",
+    "changed": [
+      "/past_state"
+    ]
+  },
+  "frame--rssi-null": {
+    "base": "frame--periodic",
+    "changed": [
+      "/rssi"
+    ]
+  },
+  "frame--seq-negative": {
+    "base": "frame--periodic",
+    "changed": [
+      "/seq"
+    ]
+  },
+  "frame--ts-not-datetime": {
+    "base": "frame--periodic",
+    "changed": [
+      "/ts"
+    ]
+  },
+  "frame--unknown-field": {
+    "base": "frame--periodic",
+    "changed": [
+      "/pin1"
+    ]
+  },
+  "frame--v1": {
+    "base": "frame--periodic",
+    "changed": [
+      "/v"
+    ]
+  },
+  "heartbeat--extra-field": {
+    "base": "heartbeat--basic",
+    "changed": [
+      "/seq"
+    ]
+  },
+  "heartbeat--no-ts": {
+    "base": "heartbeat--basic",
+    "changed": [
+      "/ts"
+    ]
+  },
+  "hello--bad-water-source": {
+    "base": "hello--platform-schedule",
+    "changed": [
+      "/model"
+    ]
+  },
+  "hello--local-version-feb-30": {
+    "base": "hello--local-schedule",
+    "changed": [
+      "/schedule_version"
+    ]
+  },
+  "hello--local-version-impossible-time": {
+    "base": "hello--local-schedule",
+    "changed": [
+      "/schedule_version"
+    ]
+  },
+  "hello--local-without-schedule": {
+    "base": "hello--local-schedule",
+    "changed": [
+      "/schedule"
+    ]
+  },
+  "hello--local-without-timezone": {
+    "base": "hello--local-schedule",
+    "changed": [
+      "/timezone"
+    ]
+  },
+  "hello--no-ota": {
+    "base": "hello--platform-schedule",
+    "changed": [
+      "/ota_allowed"
+    ]
+  }
+}

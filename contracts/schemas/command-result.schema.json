@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icooler.local/contracts/v0/command-result.schema.json",
+  "title": "Результат команды, v0 (ТЗ Stage 1 §7.3)",
+  "description": "Устройство → платформа. code 200 — выполнено (success), 400 — ошибка (error, message в журнал). Ответ на GET — с param и value; у hottank/coldtank/power — applied (наличие по параметру команды проверяет dispatcher: в результате POST параметра нет); у selftest — checks.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "cmd_id",
+    "code"
+  ],
+  "properties": {
+    "v": {
+      "$ref": "common.schema.json#/$defs/v"
+    },
+    "cmd_id": {
+      "$ref": "common.schema.json#/$defs/cmd_id"
+    },
+    "code": {
+      "enum": [
+        200,
+        400
+      ]
+    },
+    "param": {
+      "enum": [
+        "schedversion",
+        "timezone",
+        "otaallowed"
+      ]
+    },
+    "value": {
+      "type": "string",
+      "maxLength": 1024
+    },
+    "message": {
+      "description": "Текст ошибки — тот же, что в Bluetooth-ответе 400 message:<текст>. Известные: time not synced, deadline passed, interrupted by reboot, schedule changed, schedule save failed.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "applied": {
+      "description": "pushed — строки отправлены контроллеру; flag_only — флаг записан, сейчас нагрев/охлаждение не включаются (выключено питание, вне окна или выходной при энергосбережении) — §7.3 п. 8.",
+      "enum": [
+        "pushed",
+        "flag_only"
+      ]
+    },
+    "checks": {
+      "description": "Результат selftest: проверка → ok/fail.",
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z0-9_]{1,32}$",
+        "type": "string"
+      },
+      "additionalProperties": {
+        "enum": [
+          "ok",
+          "fail"
+        ]
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "param": {
+            "const": "schedversion"
+          }
+        },
+        "required": [
+          "param"
+        ],
+        "type": "object"
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "common.schema.json#/$defs/schedule_version"
+          }
+        },
+        "type": "object"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "param": {
+            "const": "timezone"
+          }
+        },
+        "required": [
+          "param"
+        ],
+        "type": "object"
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "common.schema.json#/$defs/timezone"
+          }
+        },
+        "type": "object"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "param": {
+            "const": "otaallowed"
+          }
+        },
+        "required": [
+          "param"
+        ],
+        "type": "object"
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "common.schema.json#/$defs/flag01"
+          }
+        },
+        "type": "object"
+      }
+    }
+  ],
+  "dependentRequired": {
+    "param": [
+      "value"
+    ],
+    "value": [
+      "param"
+    ]
+  },
+  "if": {
+    "properties": {
+      "code": {
+        "const": 400
+      }
+    },
+    "type": "object"
+  },
+  "then": {
+    "required": [
+      "message"
+    ],
+    "not": {
+      "anyOf": [
+        {
+          "required": [
+            "param"
+          ],
+          "type": "object"
+        },
+        {
+          "required": [
+            "applied"
+          ],
+          "type": "object"
+        },
+        {
+          "required": [
+            "checks"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "type": "object"
+  },
+  "else": {
+    "not": {
+      "required": [
+        "message"
+      ],
+      "type": "object"
+    },
+    "allOf": [
+      {
+        "not": {
+          "allOf": [
+            {
+              "required": [
+                "param"
+              ],
+              "type": "object"
+            },
+            {
+              "required": [
+                "applied"
+              ],
+              "type": "object"
+            }
+          ]
+        }
+      },
+      {
+        "not": {
+          "allOf": [
+            {
+              "required": [
+                "param"
+              ],
+              "type": "object"
+            },
+            {
+              "required": [
+                "checks"
+              ],
+              "type": "object"
+            }
+          ]
+        }
+      },
+      {
+        "not": {
+          "allOf": [
+            {
+              "required": [
+                "applied"
+              ],
+              "type": "object"
+            },
+            {
+              "required": [
+                "checks"
+              ],
+              "type": "object"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

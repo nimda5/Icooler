@@ -1,0 +1,16 @@
+{
+  "v": 0,
+  "device_id": "SUWHCA12345678",
+  "ts": "2026-12-01T10:00:03Z",
+  "fw": "1.0.0",
+  "hw": "rev-a",
+  "model": {
+    "water_source": "bottle_top",
+    "variant": "A",
+    "carbonated": false,
+    "build": "SS_BOT_UP_CHA"
+  },
+  "schedule_version": "local:2026-11-30T18:00:00+02:00",
+  "ota_allowed": false,
+  "timezone": "Europe/Riga"
+}

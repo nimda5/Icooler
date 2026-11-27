@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icooler.local/contracts/v0/hello.schema.json",
+  "title": "hello при старте, v0 (ТЗ Stage 1 §7.3)",
+  "description": "Устройство → платформа после старта и подключения: прошивка, железо, модель, версия расписания, настройка OTA. Пока версия расписания локальная — с содержимым расписания и часовым поясом.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "device_id",
+    "ts",
+    "fw",
+    "hw",
+    "model",
+    "schedule_version",
+    "ota_allowed"
+  ],
+  "properties": {
+    "v": {
+      "$ref": "common.schema.json#/$defs/v"
+    },
+    "device_id": {
+      "$ref": "common.schema.json#/$defs/device_id"
+    },
+    "ts": {
+      "$ref": "common.schema.json#/$defs/ts"
+    },
+    "fw": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "hw": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "model": {
+      "description": "Модель (FW-9: настройка устройства, а не сборка).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "water_source",
+        "variant",
+        "carbonated"
+      ],
+      "properties": {
+        "water_source": {
+          "description": "Тип установки воды: верхняя бутыль, нижняя бутыль, водопровод (U/D/N в имени BLE).",
+          "enum": [
+            "bottle_top",
+            "bottle_bottom",
+            "mains"
+          ]
+        },
+        "variant": {
+          "description": "Исполнение (A/S в имени BLE).",
+          "enum": [
+            "A",
+            "S"
+          ]
+        },
+        "carbonated": {
+          "description": "Есть газированная вода.",
+          "type": "boolean"
+        },
+        "build": {
+          "description": "Код сборки существующей прошивки (unit.h), если известен.",
+          "enum": [
+            "SS_BOT_UP_CHA",
+            "SS_BOT_UP_CHS",
+            "SS_BOT_DOWN_CHA",
+            "SS_BOT_DOWN_CHS",
+            "SS_PIPE_CHA",
+            "SS_PIPE_CHS"
+          ]
+        }
+      }
+    },
+    "schedule_version": {
+      "description": "Версия действующего расписания; null — расписания нет.",
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/schedule_version"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "schedule": {
+      "$ref": "common.schema.json#/$defs/schedule"
+    },
+    "timezone": {
+      "$ref": "common.schema.json#/$defs/timezone"
+    },
+    "ota_allowed": {
+      "type": "boolean"
+    }
+  },
+  "if": {
+    "properties": {
+      "schedule_version": {
+        "type": "string",
+        "pattern": "^local:"
+      }
+    },
+    "required": [
+      "schedule_version"
+    ],
+    "type": "object"
+  },
+  "then": {
+    "required": [
+      "schedule",
+      "timezone"
+    ],
+    "type": "object"
+  }
+}
