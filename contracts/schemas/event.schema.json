@@ -1,0 +1,501 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icooler.local/contracts/v0/event.schema.json",
+  "title": "Событие устройства, v0 (ТЗ Stage 1 §7.3)",
+  "description": "Устройство → платформа, по факту. Формат {v, device_id, seq, ts, type, code?, data?}; ts — время возникновения; повторы отбрасываются по (device_id, seq).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "device_id",
+    "seq",
+    "ts",
+    "type"
+  ],
+  "properties": {
+    "v": {
+      "$ref": "common.schema.json#/$defs/v"
+    },
+    "device_id": {
+      "$ref": "common.schema.json#/$defs/device_id"
+    },
+    "seq": {
+      "$ref": "common.schema.json#/$defs/seq"
+    },
+    "ts": {
+      "$ref": "common.schema.json#/$defs/ts"
+    },
+    "type": {
+      "enum": [
+        "error_raised",
+        "error_cleared",
+        "past_started",
+        "past_finished",
+        "bottle_removed",
+        "bottle_installed",
+        "reboot",
+        "buffer_overflow",
+        "schedule_applied",
+        "controller_confirmed",
+        "controller_not_confirmed"
+      ]
+    },
+    "code": {
+      "type": "string"
+    },
+    "data": {
+      "type": "object"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "enum": [
+              "error_raised",
+              "error_cleared"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "then": {
+        "required": [
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "$ref": "common.schema.json#/$defs/error_code"
+          }
+        },
+        "not": {
+          "required": [
+            "data"
+          ],
+          "type": "object"
+        },
+        "type": "object"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "past_started"
+          }
+        },
+        "type": "object"
+      },
+      "then": {
+        "required": [
+          "data"
+        ],
+        "not": {
+          "required": [
+            "code"
+          ],
+          "type": "object"
+        },
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "initiator"
+            ],
+            "properties": {
+              "initiator": {
+                "enum": [
+                  "auto",
+                  "manual"
+                ]
+              },
+              "user": {
+                "description": "Пользователь, если известен.",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              }
+            }
+          }
+        },
+        "type": "object"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "past_finished"
+          }
+        },
+        "type": "object"
+      },
+      "then": {
+        "required": [
+          "data"
+        ],
+        "not": {
+          "required": [
+            "code"
+          ],
+          "type": "object"
+        },
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "started_ts",
+              "result"
+            ],
+            "properties": {
+              "started_ts": {
+                "$ref": "common.schema.json#/$defs/ts"
+              },
+              "result": {
+                "enum": [
+                  "ok",
+                  "error"
+                ]
+              },
+              "error_code": {
+                "$ref": "common.schema.json#/$defs/error_code"
+              }
+            },
+            "if": {
+              "properties": {
+                "result": {
+                  "const": "error"
+                }
+              },
+              "type": "object"
+            },
+            "then": {
+              "required": [
+                "error_code"
+              ],
+              "type": "object"
+            },
+            "else": {
+              "not": {
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "type": "object"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "bottle_removed"
+          }
+        },
+        "type": "object"
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "code"
+              ],
+              "type": "object"
+            },
+            {
+              "required": [
+                "data"
+              ],
+              "type": "object"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "bottle_installed"
+          }
+        },
+        "type": "object"
+      },
+      "then": {
+        "required": [
+          "data"
+        ],
+        "not": {
+          "required": [
+            "code"
+          ],
+          "type": "object"
+        },
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "liters_since_last"
+            ],
+            "properties": {
+              "liters_since_last": {
+                "description": "Литры с прошлой замены бутыли.",
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "type": "object"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "reboot"
+          }
+        },
+        "type": "object"
+      },
+      "then": {
+        "required": [
+          "code"
+        ],
+        "not": {
+          "required": [
+            "data"
+          ],
+          "type": "object"
+        },
+        "properties": {
+          "code": {
+            "description": "Причина: питание, сторожевой таймер, обновление; other — прочие причины сброса ESP32.",
+            "enum": [
+              "power",
+              "watchdog",
+              "update",
+              "other"
+            ]
+          }
+        },
+        "type": "object"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "buffer_overflow"
+          }
+        },
+        "type": "object"
+      },
+      "then": {
+        "required": [
+          "data"
+        ],
+        "not": {
+          "required": [
+            "code"
+          ],
+          "type": "object"
+        },
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "frames_lost",
+              "events_lost"
+            ],
+            "properties": {
+              "frames_lost": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "events_lost": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "type": "object"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "schedule_applied"
+          }
+        },
+        "type": "object"
+      },
+      "then": {
+        "required": [
+          "data"
+        ],
+        "not": {
+          "required": [
+            "code"
+          ],
+          "type": "object"
+        },
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "version",
+              "source"
+            ],
+            "properties": {
+              "version": {
+                "$ref": "common.schema.json#/$defs/schedule_version"
+              },
+              "source": {
+                "enum": [
+                  "platform",
+                  "local"
+                ]
+              },
+              "schedule": {
+                "$ref": "common.schema.json#/$defs/schedule"
+              },
+              "timezone": {
+                "$ref": "common.schema.json#/$defs/timezone"
+              }
+            },
+            "if": {
+              "properties": {
+                "source": {
+                  "const": "local"
+                }
+              },
+              "type": "object"
+            },
+            "then": {
+              "required": [
+                "schedule",
+                "timezone"
+              ],
+              "properties": {
+                "version": {
+                  "pattern": "^local:",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "else": {
+              "properties": {
+                "version": {
+                  "pattern": "^[0-9]+$",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          }
+        },
+        "type": "object"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "controller_confirmed"
+          }
+        },
+        "type": "object"
+      },
+      "then": {
+        "required": [
+          "data"
+        ],
+        "not": {
+          "required": [
+            "code"
+          ],
+          "type": "object"
+        },
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "cmd_id",
+              "heat_on",
+              "cool_on",
+              "uart_ms"
+            ],
+            "properties": {
+              "cmd_id": {
+                "$ref": "common.schema.json#/$defs/cmd_id"
+              },
+              "heat_on": {
+                "type": "boolean"
+              },
+              "cool_on": {
+                "type": "boolean"
+              },
+              "uart_ms": {
+                "description": "От первой строки AT+PUSH (или от проверки, если состояние уже было нужным) до последнего требуемого AT+LOAD, мс.",
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "type": "object"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "controller_not_confirmed"
+          }
+        },
+        "type": "object"
+      },
+      "then": {
+        "required": [
+          "data"
+        ],
+        "not": {
+          "required": [
+            "code"
+          ],
+          "type": "object"
+        },
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "cmd_id"
+            ],
+            "properties": {
+              "cmd_id": {
+                "$ref": "common.schema.json#/$defs/cmd_id"
+              }
+            }
+          }
+        },
+        "type": "object"
+      }
+    }
+  ]
+}

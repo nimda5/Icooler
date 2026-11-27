@@ -1,0 +1,8 @@
+{
+  "v": 0,
+  "cmd_id": "c-91",
+  "deadline_at": "2026-12-01T10:08:30Z",
+  "op": "POST",
+  "param": "power",
+  "value": "0"
+}
