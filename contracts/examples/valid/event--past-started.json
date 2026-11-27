@@ -1,0 +1,11 @@
+{
+  "v": 0,
+  "device_id": "SUWHCA12345678",
+  "seq": 1050,
+  "ts": "2026-12-01T10:07:12Z",
+  "type": "past_started",
+  "data": {
+    "initiator": "manual",
+    "user": "tech-1"
+  }
+}

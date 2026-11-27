@@ -1,0 +1,27 @@
+{
+  "clusters": [
+    {
+      "lat": 56.95,
+      "lng": 24.1,
+      "count": 5,
+      "by_color": {
+        "green": 4,
+        "red": 1
+      }
+    }
+  ],
+  "devices": [
+    {
+      "id": "00000000-0000-4000-8000-000000000010",
+      "lat": 56.95,
+      "lng": 24.11,
+      "color": "green",
+      "client_name": "SIA Birojs",
+      "address": "Brīvības iela 1, Rīga",
+      "floor": "3",
+      "place": "Кухня у окна",
+      "filter_left_pct": 99.5,
+      "alerts_open": 0
+    }
+  ]
+}

@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icooler.local/contracts/v0/command.schema.json",
+  "title": "Команда платформы, v0 (ТЗ Stage 1 §7.3)",
+  "description": "Платформа → устройство. Имена параметров и значения — как в Bluetooth-командах существующей прошивки; список закрытый (команды Stage 1). value — только у POST, строка в том же виде, что после двоеточия в Bluetooth-команде. В повторах cmd_id и deadline_at те же.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "cmd_id",
+    "deadline_at",
+    "op",
+    "param"
+  ],
+  "properties": {
+    "v": {
+      "$ref": "common.schema.json#/$defs/v"
+    },
+    "cmd_id": {
+      "$ref": "common.schema.json#/$defs/cmd_id"
+    },
+    "deadline_at": {
+      "description": "Срок команды, ISO-8601 UTC (§7.3, жизненный цикл п. 1–2, 7).",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "(Z|\\+00:00)$"
+    },
+    "op": {
+      "enum": [
+        "GET",
+        "POST"
+      ]
+    },
+    "param": {
+      "type": "string"
+    },
+    "value": {
+      "type": "string"
+    }
+  },
+  "oneOf": [
+    {
+      "title": "GET: all, schedversion, timezone, otaallowed",
+      "properties": {
+        "op": {
+          "const": "GET"
+        },
+        "param": {
+          "enum": [
+            "all",
+            "schedversion",
+            "timezone",
+            "otaallowed"
+          ]
+        }
+      },
+      "not": {
+        "required": [
+          "value"
+        ],
+        "type": "object"
+      },
+      "type": "object"
+    },
+    {
+      "title": "POST hottank, coldtank, power, energysaving, otaallowed: 0/1",
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "op": {
+          "const": "POST"
+        },
+        "param": {
+          "enum": [
+            "hottank",
+            "coldtank",
+            "power",
+            "energysaving",
+            "otaallowed"
+          ]
+        },
+        "value": {
+          "$ref": "common.schema.json#/$defs/flag01"
+        }
+      },
+      "type": "object"
+    },
+    {
+      "title": "POST filterreset, selftest: 1",
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "op": {
+          "const": "POST"
+        },
+        "param": {
+          "enum": [
+            "filterreset",
+            "selftest"
+          ]
+        },
+        "value": {
+          "const": "1"
+        }
+      },
+      "type": "object"
+    },
+    {
+      "title": "POST autopowerscheduling: строка расписания",
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "op": {
+          "const": "POST"
+        },
+        "param": {
+          "const": "autopowerscheduling"
+        },
+        "value": {
+          "$ref": "common.schema.json#/$defs/schedule"
+        }
+      },
+      "type": "object"
+    },
+    {
+      "title": "POST schedversion: <номер>,<CRC32 строки «timezone|расписание», 8 hex>",
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "op": {
+          "const": "POST"
+        },
+        "param": {
+          "const": "schedversion"
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^[0-9]{1,10},[0-9a-f]{8}$"
+        }
+      },
+      "type": "object"
+    },
+    {
+      "title": "POST timezone: IANA",
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "op": {
+          "const": "POST"
+        },
+        "param": {
+          "const": "timezone"
+        },
+        "value": {
+          "$ref": "common.schema.json#/$defs/timezone"
+        }
+      },
+      "type": "object"
+    }
+  ]
+}

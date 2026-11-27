@@ -1,0 +1,6 @@
+{
+  "type": "https://icooler.local/problems/forbidden",
+  "title": "Forbidden",
+  "status": 403,
+  "detail": "Роли exec это не разрешено"
+}

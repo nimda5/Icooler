@@ -1,0 +1,17 @@
+{
+  "id": "00000000-0000-4000-8000-000000000060",
+  "device_id": "00000000-0000-4000-8000-000000000010",
+  "client_id": "00000000-0000-4000-8000-000000000020",
+  "type": "offline",
+  "severity": "warning",
+  "status": "acknowledged",
+  "code": null,
+  "details": {
+    "offline_since": "2026-12-07T07:40:00Z"
+  },
+  "assignee_id": "00000000-0000-4000-8000-000000000004",
+  "opened_at": "2026-12-07T07:55:00Z",
+  "acknowledged_at": "2026-12-07T08:01:00Z",
+  "recovered_at": null,
+  "closed_at": null
+}

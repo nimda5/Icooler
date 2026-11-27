@@ -1,0 +1,50 @@
+{
+  "offline_after_min": {
+    "value": 3,
+    "level": "platform"
+  },
+  "offline_alert_after_min": {
+    "value": 15,
+    "level": "tenant"
+  },
+  "hot_alert_below_set_c": {
+    "value": 10,
+    "level": "platform"
+  },
+  "hot_alert_above_c": {
+    "value": 99,
+    "level": "platform"
+  },
+  "hot_alert_after_min": {
+    "value": 10,
+    "level": "platform"
+  },
+  "cold_alert_above_set_c": {
+    "value": 5,
+    "level": "platform"
+  },
+  "cold_alert_below_c": {
+    "value": 1,
+    "level": "platform"
+  },
+  "cold_alert_after_min": {
+    "value": 15,
+    "level": "platform"
+  },
+  "filter_warning_pct": {
+    "value": 20,
+    "level": "platform"
+  },
+  "filter_critical_pct": {
+    "value": 5,
+    "level": "platform"
+  },
+  "upcoming_filters_days": {
+    "value": 30,
+    "level": "platform"
+  },
+  "filter_forecast_window_days": {
+    "value": 30,
+    "level": "platform"
+  }
+}
