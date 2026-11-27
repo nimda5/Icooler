@@ -31,6 +31,15 @@ interface RawOp {
 }
 
 let cache: Map<string, Operation> | undefined;
+let schemas: Record<string, unknown> = {};
+
+/** Схема из components.schemas контракта (например, перечень ключей настроек). */
+export function component(name: string): Record<string, unknown> {
+  operations();
+  const s = schemas[name];
+  if (!s) throw new Error(`схемы ${name} нет в контракте`);
+  return s as Record<string, unknown>;
+}
 
 export function operations(file = join(repoRoot(), 'contracts/openapi/openapi.yaml')): Map<string, Operation> {
   if (cache) return cache;
@@ -48,6 +57,7 @@ export function operations(file = join(repoRoot(), 'contracts/openapi/openapi.ya
   const ajv = make(false);
   const ajvQuery = make(true);
   const param = (p: RawParam): RawParam => (p.$ref ? doc.components.parameters[p.$ref.split('/').pop()!]! : p);
+  schemas = doc.components.schemas;
   const ops = new Map<string, Operation>();
   for (const [path, item] of Object.entries(doc.paths)) {
     for (const m of ['get', 'post', 'put', 'patch', 'delete']) {

@@ -71,7 +71,9 @@ export async function invalidateResetTokens(c: pg.PoolClient, userId: string): P
 
 /** Строка пользователя под блокировкой: вход, сброс пароля, приглашение и блокировка оператором — по очереди. */
 export async function lockUser(c: pg.PoolClient, id: string) {
-  return (await c.query(`select id, status, password_hash, locked_until, deleted_at from app.app_user where id = $1 for update`, [id])).rows[0] as
+  // NO KEY UPDATE: такие решения идут по очереди, а вставки, ссылающиеся на пользователя (аудит, настройки,
+  // сессии), не ждут его и не дают взаимных блокировок.
+  return (await c.query(`select id, status, password_hash, locked_until, deleted_at from app.app_user where id = $1 for no key update`, [id])).rows[0] as
     { id: string; status: string; password_hash: string | null; locked_until: Date | null; deleted_at: Date | null } | undefined;
 }
 

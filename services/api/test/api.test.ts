@@ -27,6 +27,8 @@ const T_B = '22222222-2222-4222-8222-222222222222';
 const C_A = 'aaaaaaaa-0000-4000-8000-0000000000c1';
 const C_B = 'bbbbbbbb-0000-4000-8000-0000000000c1';
 const PW = 'correct horse battery';
+const D_A = 'aaaaaaaa-0000-4000-8000-0000000000d1';
+const D_B = 'bbbbbbbb-0000-4000-8000-0000000000d1';
 const ROLES = ['admin', 'tech', 'exec', 'dispatcher', 'end_user', 'sig_admin'] as const;
 type Role = (typeof ROLES)[number];
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -103,6 +105,8 @@ before(async () => {
     await pool.query(`insert into app.role_assignment (user_id, tenant_id, role) values ($1, $2, $3)`, [u.id, u.tenant, role]);
   }
   await pool.query(`insert into app.end_user_access (tenant_id, user_id, client_id, bound_by) values ($1, $2, $3, $4)`, [T_A, USERS.end_user.id, C_A, USERS.admin.id]);
+  await pool.query(`insert into app.device (id, tenant_id, device_id, serial, water_source, variant, carbonated) values
+    ($1, $3, 'cooler-a1', 'SN-A1', 'mains', 'A', false), ($2, $4, 'cooler-b1', 'SN-B1', 'mains', 'A', false)`, [D_A, D_B, T_A, T_B]);
   const cfg: Config = {
     databaseUrl: url.toString(), dbRole: 'app_api', csrfSecret: 'test-secret-0123456789', cookieSecure: true, trustProxyHops: 0,
     publicUrl: 'https://portal.example', operatorSessionH: 12, endUserSessionDays: 30, invitationH: 72, passwordResetH: 1,
@@ -263,6 +267,10 @@ const REQ: Record<string, (role: Role) => Promise<[string, string, unknown?]> | 
   updateEndUser: () => ['PATCH', `/end-users/${USERS.end_user.id}`, { language: 'en' }],
   bindEndUserClient: () => ['PUT', `/end-users/${USERS.end_user.id}/clients/${C_A}`],
   listAudit: () => ['GET', '/audit-log'],
+  getSettings: () => ['GET', '/settings'],
+  updateSettings: () => ['PATCH', '/settings', { upcoming_filters_days: 30 }],
+  getDeviceSettings: () => ['GET', `/devices/${D_A}/settings`],
+  updateDeviceSettings: () => ['PATCH', `/devices/${D_A}/settings`, { offline_after_min: 3 }],
 };
 
 test('права: каждая операция × каждая роль — разрешено 2xx, запрещено 403 (по матрице 7.1, roles-matrix.json)', async () => {
@@ -280,7 +288,7 @@ test('права: каждая операция × каждая роль — р�
   }
 });
 
-test('каждая операция тегов auth, profile, tenants, users, end-users реализована — и только из контракта', () => {
+test('каждая операция тегов auth, profile, tenants, users, end-users, настройки и аудит реализована — и только из контракта', () => {
   const handled = new Set<string>();
   for (const C of CONTROLLERS) {
     for (const k of Object.getOwnPropertyNames(C.prototype)) {
@@ -293,7 +301,7 @@ test('каждая операция тегов auth, profile, tenants, users, en
   const want = ['login', 'logout', 'logoutAll', 'forgotPassword', 'resetPassword', 'acceptInvitation', 'getProfile', 'updateProfile',
     'changePassword', 'createTenant', 'listUsers', 'inviteUser', 'getUser', 'updateUser', 'deleteUser', 'blockUser', 'unblockUser',
     'listEndUsers', 'inviteEndUser', 'getEndUser', 'updateEndUser', 'deleteEndUser', 'blockEndUser', 'unblockEndUser',
-    'bindEndUserClient', 'unbindEndUserClient', 'listAudit'];
+    'bindEndUserClient', 'unbindEndUserClient', 'listAudit', 'getSettings', 'updateSettings', 'getDeviceSettings', 'updateDeviceSettings'];
   assert.deepEqual([...handled].sort(), want.sort());
 });
 
@@ -499,11 +507,12 @@ test('почтовая служба недоступна: приглашение
  */
 async function interleave(userId: string, request: () => Promise<Res>, change: (c: pg.PoolClient) => Promise<void>): Promise<Res> {
   const c = await pool.connect();
+  let p: Promise<Res> | undefined;
   try {
     await c.query('begin');
     await c.query('select 1 from app.app_user where id = $1 for update', [userId]);
     const me = (await c.query('select pg_backend_pid() as pid')).rows[0].pid as number;
-    const p = request();
+    p = request();
     const end = Date.now() + 10_000;
     for (;;) {
       const waiting = (await pool.query(`select count(*)::int as n from pg_stat_activity where $1 = any(pg_blocking_pids(pid))`, [me])).rows[0].n;
@@ -514,7 +523,11 @@ async function interleave(userId: string, request: () => Promise<Res>, change: (
     await change(c);
     await c.query('commit');
     return await p;
-  } finally { c.release(); }
+  } finally {
+    await c.query('rollback').catch(() => {});
+    c.release();
+    await p?.catch(() => {}); // запрос не переживает тест
+  }
 }
 
 test('вход одновременно со сменой пароля: проверяется пароль под блокировкой — старый уже не подходит', async () => {
@@ -574,4 +587,126 @@ test('курсор с несуществующей датой — 422', async ()
     assert.equal((await call('GET', `/users?cursor=${cur}`, { sess: sess.admin })).status, 422, ts);
     assert.equal((await call('GET', `/audit-log?cursor=${cur}`, { sess: sess.admin })).status, 422, ts);
   }
+});
+
+// ---------------------------------------------------------------- настройки V-006
+
+test('настройки: значения платформы (§7.4) с уровнем; арендатор переопределяет, null — снова платформа', async () => {
+  await call('PATCH', '/settings', { sess: sess.admin, body: { upcoming_filters_days: null } }); // после теста матрицы
+  const g = await call('GET', '/settings', { sess: sess.admin });
+  assert.equal(g.status, 200);
+  // Все значения по умолчанию — §7.4.
+  const DEFAULTS = { offline_after_min: 3, offline_alert_after_min: 15, hot_alert_below_set_c: 10, hot_alert_above_c: 99,
+    hot_alert_after_min: 10, cold_alert_above_set_c: 5, cold_alert_below_c: 1, cold_alert_after_min: 15, filter_warning_pct: 20,
+    filter_critical_pct: 5, upcoming_filters_days: 30, filter_forecast_window_days: 30 };
+  assert.deepEqual(g.body, Object.fromEntries(Object.entries(DEFAULTS).map(([k, v]) => [k, { value: v, level: 'platform' }])));
+  const u = await call('PATCH', '/settings', { sess: sess.admin, body: { offline_alert_after_min: 30, hot_alert_above_c: 97.5 } });
+  assert.equal(u.status, 200);
+  assert.deepEqual(u.body.offline_alert_after_min, { value: 30, level: 'tenant' });
+  assert.deepEqual(u.body.hot_alert_above_c, { value: 97.5, level: 'tenant' });
+  // Другой арендатор этого не видит.
+  const b = await login(ADMIN_B.email);
+  assert.deepEqual((await call('GET', '/settings', { sess: b })).body.offline_alert_after_min, { value: 15, level: 'platform' });
+  const back = await call('PATCH', '/settings', { sess: sess.admin, body: { offline_alert_after_min: null, hot_alert_above_c: null } });
+  assert.deepEqual(back.body.offline_alert_after_min, { value: 15, level: 'platform' });
+  const a = await call('GET', '/audit-log?action=setting.tenant_update', { sess: sess.admin });
+  const set30 = a.body.items.find((i: { after: Record<string, { value: number }> }) => i.after.offline_alert_after_min?.value === 30);
+  assert.deepEqual([set30.before.offline_alert_after_min, set30.after.offline_alert_after_min], [{ value: 15, level: 'platform' }, { value: 30, level: 'tenant' }]);
+});
+
+test('настройки устройства: устройство → арендатор → платформа; чужое устройство — 404', async () => {
+  await call('PATCH', `/devices/${D_A}/settings`, { sess: sess.admin, body: { offline_after_min: null } }); // после теста матрицы
+  await call('PATCH', '/settings', { sess: sess.admin, body: { offline_after_min: 5 } });
+  const d0 = await call('GET', `/devices/${D_A}/settings`, { sess: sess.admin });
+  assert.deepEqual(d0.body.offline_after_min, { value: 5, level: 'tenant' });
+  const d1 = await call('PATCH', `/devices/${D_A}/settings`, { sess: sess.admin, body: { offline_after_min: 10 } });
+  assert.deepEqual(d1.body.offline_after_min, { value: 10, level: 'device' });
+  assert.deepEqual((await call('GET', '/settings', { sess: sess.admin })).body.offline_after_min, { value: 5, level: 'tenant' });
+  const d2 = await call('PATCH', `/devices/${D_A}/settings`, { sess: sess.admin, body: { offline_after_min: null } });
+  assert.deepEqual(d2.body.offline_after_min, { value: 5, level: 'tenant' });
+  await call('PATCH', '/settings', { sess: sess.admin, body: { offline_after_min: null } });
+  assert.equal((await call('GET', `/devices/${D_B}/settings`, { sess: sess.admin })).status, 404);
+  assert.equal((await call('PATCH', `/devices/${D_B}/settings`, { sess: sess.admin, body: { offline_after_min: 1 } })).status, 404);
+  assert.equal((await call('GET', '/devices/not-a-uuid/settings', { sess: sess.admin })).status, 404);
+});
+
+test('настройки: вне границ, неизвестный ключ, пустое тело — 422; критичный порог фильтра выше предупреждения — 422', async () => {
+  for (const body of [{ filter_warning_pct: 101 }, { offline_after_min: 0 }, { offline_after_min: 2.5 }, { ota_allowed: 1 }, {}, { offline_after_min: '3' }]) {
+    assert.equal((await call('PATCH', '/settings', { sess: sess.admin, body })).status, 422, JSON.stringify(body));
+  }
+  assert.equal((await call('PATCH', '/settings', { sess: sess.admin, body: { filter_critical_pct: 30 } })).status, 422);
+  assert.equal((await call('PATCH', `/devices/${D_A}/settings`, { sess: sess.admin, body: { filter_critical_pct: 25 } })).status, 422);
+  // Устройство с переопределением: новое значение арендатора не должно сделать его порог критичного выше предупреждения.
+  assert.equal((await call('PATCH', `/devices/${D_A}/settings`, { sess: sess.admin, body: { filter_critical_pct: 15 } })).status, 200);
+  assert.equal((await call('PATCH', '/settings', { sess: sess.admin, body: { filter_warning_pct: 10 } })).status, 422);
+  assert.equal((await call('PATCH', `/devices/${D_A}/settings`, { sess: sess.admin, body: { filter_critical_pct: null } })).status, 200);
+  assert.deepEqual((await call('GET', '/settings', { sess: sess.admin })).body.filter_warning_pct, { value: 20, level: 'platform' });
+});
+
+test('настройки: аудит изменения устройства и снятия переопределения; после 422 — ни изменения, ни аудита', async () => {
+  const count = async (a: string) => (await pool.query(`select count(*)::int as n from app.audit_log where action = $1`, [a])).rows[0].n as number;
+  await call('PATCH', `/devices/${D_A}/settings`, { sess: sess.admin, body: { cold_alert_after_min: 20 } });
+  await call('PATCH', `/devices/${D_A}/settings`, { sess: sess.admin, body: { cold_alert_after_min: null } });
+  const a = (await call('GET', `/audit-log?action=setting.device_update&object_id=${D_A}&limit=2`, { sess: sess.admin })).body.items;
+  assert.deepEqual([a[0].before.cold_alert_after_min, a[0].after.cold_alert_after_min], [{ value: 20, level: 'device' }, { value: 15, level: 'platform' }]);
+  assert.deepEqual([a[1].before.cold_alert_after_min, a[1].after.cold_alert_after_min], [{ value: 15, level: 'platform' }, { value: 20, level: 'device' }]);
+  const n0 = await count('setting.tenant_update');
+  assert.equal((await call('PATCH', '/settings', { sess: sess.admin, body: { hot_alert_after_min: 30, filter_critical_pct: 50 } })).status, 422);
+  assert.equal(await count('setting.tenant_update'), n0);
+  assert.deepEqual((await call('GET', '/settings', { sess: sess.admin })).body.hot_alert_after_min, { value: 10, level: 'platform' });
+});
+
+test('настройки арендатора и устройства одновременно — правило порогов проверяется по актуальным значениям обоих уровней', async () => {
+  await call('PATCH', `/devices/${D_A}/settings`, { sess: sess.admin, body: { filter_critical_pct: 10 } });
+  const c = await pool.connect();
+  let p: Promise<Res> | undefined;
+  try {
+    await c.query('begin');
+    await c.query('select 1 from app.tenant where id = $1 for update', [T_A]); // «параллельное изменение арендатора»
+    const me = (await c.query('select pg_backend_pid() as pid')).rows[0].pid as number;
+    p = call('PATCH', `/devices/${D_A}/settings`, { sess: sess.admin, body: { filter_critical_pct: 15 } });
+    const end = Date.now() + 10_000;
+    for (;;) {
+      if ((await pool.query(`select count(*)::int as n from pg_stat_activity where $1 = any(pg_blocking_pids(pid))`, [me])).rows[0].n > 0) break;
+      if (Date.now() > end) throw new Error('изменение устройства не ждёт блокировку арендатора');
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    await c.query(`insert into app.setting (tenant_id, key, value) values ($1, 'filter_warning_pct', '12')`, [T_A]);
+    await c.query('commit');
+    assert.equal((await p!).status, 422); // 15 > 12 — по значению арендатора, закоммиченному первым
+  } finally {
+    await c.query('rollback').catch(() => {});
+    c.release();
+    await p?.catch(() => {});
+  }
+  await call('PATCH', `/devices/${D_A}/settings`, { sess: sess.admin, body: { filter_critical_pct: null } });
+  await call('PATCH', '/settings', { sess: sess.admin, body: { filter_warning_pct: null } });
+});
+
+test('настройки и вход того же Admin одновременно — без взаимной блокировки (deadlock → 500)', async () => {
+  // Как вход: держим строку пользователя, затем пишем сессию (проверка FK берёт KEY SHARE на арендатора).
+  const c = await pool.connect();
+  let p: Promise<Res> | undefined;
+  try {
+    await c.query('begin');
+    // Худший случай — строка пользователя под FOR UPDATE: настройки (уже держат арендатора) ждут её на FK updated_by.
+    await c.query('select 1 from app.app_user where id = $1 for update', [USERS.admin.id]);
+    const me = (await c.query('select pg_backend_pid() as pid')).rows[0].pid as number;
+    p = call('PATCH', '/settings', { sess: sess.admin, body: { upcoming_filters_days: 31 } });
+    const end = Date.now() + 10_000;
+    for (;;) {
+      if ((await pool.query(`select count(*)::int as n from pg_stat_activity where $1 = any(pg_blocking_pids(pid))`, [me])).rows[0].n > 0) break;
+      if (Date.now() > end) throw new Error('настройки не встали за строкой пользователя');
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    // Теперь вставка сессии берёт KEY SHARE на арендатора: при FOR UPDATE арендатора здесь была бы взаимная блокировка.
+    await c.query(`insert into app.auth_session (id_hash, tenant_id, user_id, expires_at) values ('deadlock-probe', $1, $2, now() + interval '1 minute')`, [T_A, USERS.admin.id]);
+    await c.query('commit');
+    assert.equal((await p!).status, 200);
+  } finally {
+    await c.query('rollback').catch(() => {});
+    c.release();
+    await p?.catch(() => {});
+  }
+  await call('PATCH', '/settings', { sess: sess.admin, body: { upcoming_filters_days: null } });
 });
