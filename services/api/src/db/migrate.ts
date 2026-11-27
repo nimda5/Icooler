@@ -2,11 +2,13 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
+import { join } from 'node:path';
+import { packageRoot } from '../paths.ts';
 
 export async function migrateDb(url: string): Promise<void> {
   const pool = new pg.Pool({ connectionString: url, max: 1 });
   try {
-    await migrate(drizzle(pool), { migrationsFolder: new URL('../../drizzle', import.meta.url).pathname });
+    await migrate(drizzle(pool), { migrationsFolder: join(packageRoot(), 'drizzle') });
   } finally {
     await pool.end();
   }

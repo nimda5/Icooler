@@ -31,7 +31,9 @@ export const tokenKind = app.enum('token_kind', ['invitation', 'password_reset']
 
 const id = () => uuid('id').primaryKey().default(sql`gen_random_uuid()`);
 const tenantId = () => uuid('tenant_id').notNull().references(() => tenant.id);
-const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
+/** Время события, по умолчанию — момент вставки. */
+const nowAt = (name: string) => timestamp(name, { withTimezone: true }).notNull().defaultNow();
+const createdAt = () => nowAt('created_at');
 const ts = (name: string) => timestamp(name, { withTimezone: true });
 const deletedAt = () => ts('deleted_at');
 /** Ссылка внутри арендатора: (tenant_id, col) → parent(tenant_id, id). */
@@ -77,7 +79,7 @@ export const roleAssignment = app.table('role_assignment', {
   tenantId: uuid('tenant_id').references(() => tenant.id),
   role: role('role').notNull(),
   assignedBy: uuid('assigned_by').references(() => appUser.id),
-  assignedAt: createdAt(),
+  assignedAt: nowAt('assigned_at'),
 }, (t) => [
   foreignKey({ name: 'role_assignment_user_fk', columns: [t.userId], foreignColumns: [appUser.id] }),
   sameTenant('role_assignment_user_tenant_fk', t.tenantId, t.userId, appUser),
@@ -169,7 +171,7 @@ export const endUserAccess = app.table('end_user_access', {
   tenantId: tenantId(),
   userId: uuid('user_id').notNull(),
   clientId: uuid('client_id').notNull(),
-  boundAt: createdAt(),
+  boundAt: nowAt('bound_at'),
   boundBy: uuid('bound_by').notNull(),
   deletedAt: deletedAt(),
 }, (t) => [
@@ -272,7 +274,7 @@ export const deviceHistory = app.table('device_history', {
   id: id(),
   tenantId: tenantId(),
   deviceId: uuid('device_id').notNull(),
-  at: createdAt(),
+  at: nowAt('at'),
   by: uuid('by'),
   field: historyField('field').notNull(),
   before: jsonb('before'),
@@ -299,7 +301,7 @@ export const consumptionReset = app.table('consumption_reset', {
   id: id(),
   tenantId: tenantId(),
   deviceId: uuid('device_id').notNull(),
-  at: createdAt(),
+  at: nowAt('at'),
   by: uuid('by').notNull(),
   waterTotalL: numeric('water_total_l', { precision: 14, scale: 3 }).notNull(),
 }, (t) => [
@@ -313,7 +315,7 @@ export const filterInstall = app.table('filter_install', {
   id: id(),
   tenantId: tenantId(),
   deviceId: uuid('device_id').notNull(),
-  installedAt: createdAt(),
+  installedAt: nowAt('installed_at'),
   installedBy: uuid('installed_by'),
   nominalL: numeric('nominal_l', { precision: 10, scale: 1 }).notNull(),
   waterTotalL: numeric('water_total_l', { precision: 14, scale: 3 }).notNull(),
@@ -367,7 +369,7 @@ export const scheduleLocalReport = app.table('schedule_local_report', {
   localVersion: text('local_version').notNull(),
   /** Номер, которым сообщение обработано: сохранённая локальная версия или совпавшая версия платформы. */
   version: integer('version').notNull(),
-  receivedAt: createdAt(),
+  receivedAt: nowAt('received_at'),
 }, (t) => [
   primaryKey({ name: 'schedule_local_report_pk', columns: [t.deviceId, t.localVersion] }),
   sameTenant('schedule_local_report_device_fk', t.tenantId, t.deviceId, device),
@@ -390,7 +392,7 @@ export const setting = app.table('setting', {
   key: text('key').notNull().references(() => settingDefault.key),
   value: jsonb('value').notNull(),
   updatedBy: uuid('updated_by'),
-  updatedAt: createdAt(),
+  updatedAt: nowAt('updated_at'),
 }, (t) => [
   uniqueIndex('setting_tenant_uq').on(t.tenantId, t.key).where(sql`${t.deviceId} is null`),
   sameTenant('setting_device_fk', t.tenantId, t.deviceId, device),
@@ -403,7 +405,7 @@ export const setting = app.table('setting', {
 export const auditLog = app.table('audit_log', {
   id: id(),
   tenantId: uuid('tenant_id').references(() => tenant.id),
-  at: createdAt(),
+  at: nowAt('at'),
   userId: uuid('user_id'),
   /** Кто: user — пользователь; иначе служба (api, provisioning, dispatcher, ingest, jobs-telemetry, jobs-app). */
   actor: text('actor').notNull(),
@@ -425,7 +427,7 @@ export const notification = app.table('notification', {
   id: id(),
   tenantId: tenantId(),
   userId: uuid('user_id').notNull(),
-  at: createdAt(),
+  at: nowAt('at'),
   kind: text('kind').notNull(),
   alertId: uuid('alert_id'),
   deviceId: uuid('device_id'),
