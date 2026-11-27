@@ -1,0 +1,441 @@
+{
+  "$comment": "Матрица прав ТЗ Stage 1 §7.1 — по строкам. Клетки как в ТЗ: ✅ разрешено, 👁 только просмотр, ✗ запрещено; у End User — «свои» (тогда операции в eu_operations). view-операции разрешены ролям с ✅ и 👁, change — только с ✅. Тест scripts/check-openapi.mjs сверяет x-roles каждой операции с этой таблицей.",
+  "rows": [
+    {
+      "action": "Дашборд, карта, список устройств",
+      "cells": {
+        "admin": "✅",
+        "tech": "✅",
+        "exec": "👁",
+        "dispatcher": "✅",
+        "end_user": "✗",
+        "sig_admin": "✗"
+      },
+      "view": [
+        "getDashboard",
+        "getMap",
+        "listDevices"
+      ]
+    },
+    {
+      "action": "Карточка устройства, графики, журналы",
+      "cells": {
+        "admin": "✅",
+        "tech": "✅",
+        "exec": "👁",
+        "dispatcher": "✅",
+        "end_user": "свои, без журналов команд и ошибок",
+        "sig_admin": "✗"
+      },
+      "view": [
+        "getDevice",
+        "getTelemetry",
+        "listDeviceEvents",
+        "listDeviceErrors",
+        "listPasteurizations",
+        "listAllPasteurizations",
+        "listDeviceCommands",
+        "getCommand",
+        "getDeviceHistory",
+        "getSchedule",
+        "listScheduleVersions",
+        "getConsumption",
+        "getFilter",
+        "listUpcomingFilters",
+        "listErrorCodes",
+        "getCertificate",
+        "listResets"
+      ],
+      "eu_operations": [
+        "euListDevices",
+        "euGetDevice",
+        "euGetConsumption",
+        "euGetSchedule",
+        "euGetCommand"
+      ]
+    },
+    {
+      "action": "Создать/изменить/перенести устройство, импорт CSV",
+      "$comment": "Сюда же — выпуск сертификата и записи DPS: шаг подключения устройства V-012.",
+      "cells": {
+        "admin": "✅",
+        "tech": "✅",
+        "exec": "✗",
+        "dispatcher": "✗",
+        "end_user": "✗",
+        "sig_admin": "✗"
+      },
+      "change": [
+        "createDevice",
+        "updateDevice",
+        "transferDevice",
+        "importDevices",
+        "issueCertificate"
+      ]
+    },
+    {
+      "action": "Статус жизненного цикла, аренда/покупка",
+      "cells": {
+        "admin": "✅",
+        "tech": "✅",
+        "exec": "✗",
+        "dispatcher": "✗",
+        "end_user": "✗",
+        "sig_admin": "✗"
+      },
+      "change": [
+        "setLifecycle",
+        "setOwnership"
+      ]
+    },
+    {
+      "action": "Клиенты, адреса, контакты — изменять",
+      "cells": {
+        "admin": "✅",
+        "tech": "✅",
+        "exec": "✗",
+        "dispatcher": "✗",
+        "end_user": "✗",
+        "sig_admin": "✗"
+      },
+      "change": [
+        "createClient",
+        "updateClient",
+        "deleteClient",
+        "createAddress",
+        "updateAddress",
+        "deleteAddress",
+        "createContact",
+        "updateContact",
+        "deleteContact"
+      ]
+    },
+    {
+      "action": "Клиенты, адреса, контакты — смотреть",
+      "cells": {
+        "admin": "✅",
+        "tech": "✅",
+        "exec": "👁",
+        "dispatcher": "👁",
+        "end_user": "только свой",
+        "sig_admin": "✗"
+      },
+      "view": [
+        "listClients",
+        "getClient"
+      ],
+      "eu_operations": [
+        "euListClients"
+      ]
+    },
+    {
+      "action": "«Запросить данные сейчас»",
+      "cells": {
+        "admin": "✅",
+        "tech": "✅",
+        "exec": "✗",
+        "dispatcher": "✅",
+        "end_user": "свои",
+        "sig_admin": "✗"
+      },
+      "change": [
+        "requestData"
+      ],
+      "eu_operations": [
+        "euRequestData"
+      ]
+    },
+    {
+      "action": "Нагрев/охлаждение вкл/выкл, питание, энергосбережение, расписание",
+      "cells": {
+        "admin": "✅",
+        "tech": "✅",
+        "exec": "✗",
+        "dispatcher": "✗",
+        "end_user": "свои",
+        "sig_admin": "✗"
+      },
+      "change": [
+        "setHeating",
+        "setCooling",
+        "setPower",
+        "setEnergySaving",
+        "setSchedule"
+      ],
+      "eu_operations": [
+        "euSetHeating",
+        "euSetCooling",
+        "euSetPower",
+        "euSetEnergySaving",
+        "euSetSchedule"
+      ]
+    },
+    {
+      "action": "Самодиагностика",
+      "cells": {
+        "admin": "✅",
+        "tech": "✅",
+        "exec": "✗",
+        "dispatcher": "✅",
+        "end_user": "✗",
+        "sig_admin": "✗"
+      },
+      "change": [
+        "runSelftest"
+      ]
+    },
+    {
+      "action": "Сброс ресурса фильтра, сброс счётчика потребления",
+      "cells": {
+        "admin": "✅",
+        "tech": "✅",
+        "exec": "✗",
+        "dispatcher": "✗",
+        "end_user": "свои",
+        "sig_admin": "✗"
+      },
+      "change": [
+        "resetFilter",
+        "resetConsumption"
+      ],
+      "eu_operations": [
+        "euResetFilter",
+        "euResetConsumption"
+      ]
+    },
+    {
+      "action": "Алерты: смотреть",
+      "$comment": "Уведомления (V-119) — лента алертов; отметка «прочитано» — личное состояние пользователя, не изменение алерта.",
+      "cells": {
+        "admin": "✅",
+        "tech": "✅",
+        "exec": "👁",
+        "dispatcher": "✅",
+        "end_user": "свои, только фильтр и офлайн",
+        "sig_admin": "✗"
+      },
+      "view": [
+        "listAlerts",
+        "getAlert",
+        "listNotifications",
+        "markNotificationsRead"
+      ],
+      "eu_operations": [
+        "euListAlerts"
+      ]
+    },
+    {
+      "action": "Алерты: принять, назначить, закрыть",
+      "cells": {
+        "admin": "✅",
+        "tech": "✅",
+        "exec": "✗",
+        "dispatcher": "✅",
+        "end_user": "✗",
+        "sig_admin": "✗"
+      },
+      "change": [
+        "acknowledgeAlert",
+        "assignAlert",
+        "closeAlert"
+      ]
+    },
+    {
+      "action": "Отчёты, аналитика, экспорт CSV/XLSX",
+      "$comment": "👁 у Dispatcher — смотреть отчёты без экспорта; экспорт — change. «Своё потребление» End User — та же eu-операция, что в строке «Карточка».",
+      "cells": {
+        "admin": "✅",
+        "tech": "✅",
+        "exec": "✅",
+        "dispatcher": "👁",
+        "end_user": "своё потребление",
+        "sig_admin": "✗"
+      },
+      "view": [
+        "reportConsumption",
+        "reportRanking"
+      ],
+      "change": [
+        "exportConsumption",
+        "exportDevices"
+      ],
+      "eu_operations": [
+        "euGetConsumption"
+      ]
+    },
+    {
+      "action": "eSIM: профили, привязка, ручные операции C-015",
+      "cells": {
+        "admin": "✅",
+        "tech": "👁",
+        "exec": "✗",
+        "dispatcher": "👁",
+        "end_user": "✗",
+        "sig_admin": "✗"
+      },
+      "view": [
+        "listEsimProfiles",
+        "getEsimProfile",
+        "getDeviceEsim"
+      ],
+      "change": [
+        "createEsimProfile",
+        "importEsimProfiles",
+        "updateEsimProfile",
+        "bindEsimProfile",
+        "unbindEsimProfile",
+        "createEsimOperation",
+        "confirmEsimOperation"
+      ]
+    },
+    {
+      "action": "Пользователи оператора — создать, изменить, заблокировать, удалить; роли",
+      "cells": {
+        "admin": "✅",
+        "tech": "✗",
+        "exec": "✗",
+        "dispatcher": "✗",
+        "end_user": "✗",
+        "sig_admin": "✗"
+      },
+      "view": [
+        "listUsers",
+        "getUser"
+      ],
+      "change": [
+        "inviteUser",
+        "updateUser",
+        "deleteUser",
+        "blockUser",
+        "unblockUser"
+      ]
+    },
+    {
+      "action": "Учётные записи End User — создать, изменить, привязать/отвязать, заблокировать, удалить",
+      "cells": {
+        "admin": "✅",
+        "tech": "✗",
+        "exec": "✗",
+        "dispatcher": "✅",
+        "end_user": "✗",
+        "sig_admin": "✗"
+      },
+      "view": [
+        "listEndUsers",
+        "getEndUser"
+      ],
+      "change": [
+        "inviteEndUser",
+        "updateEndUser",
+        "deleteEndUser",
+        "blockEndUser",
+        "unblockEndUser",
+        "bindEndUserClient",
+        "unbindEndUserClient"
+      ]
+    },
+    {
+      "action": "Свой профиль: имя, пароль, язык",
+      "cells": {
+        "admin": "✅",
+        "tech": "✅",
+        "exec": "✅",
+        "dispatcher": "✅",
+        "end_user": "✅",
+        "sig_admin": "✅"
+      },
+      "any": [
+        "getProfile",
+        "updateProfile",
+        "changePassword",
+        "logout",
+        "logoutAll"
+      ]
+    },
+    {
+      "action": "Блокировка устройства в IoT Hub (отзыв доступа, V-032) и разблокировка",
+      "cells": {
+        "admin": "✅",
+        "tech": "✅",
+        "exec": "✗",
+        "dispatcher": "✗",
+        "end_user": "✗",
+        "sig_admin": "✗"
+      },
+      "change": [
+        "blockDevice",
+        "unblockDevice"
+      ]
+    },
+    {
+      "action": "Разрешить/запретить обновление по воздуху на устройстве (FW-7)",
+      "cells": {
+        "admin": "✅",
+        "tech": "✗",
+        "exec": "✗",
+        "dispatcher": "✗",
+        "end_user": "✗",
+        "sig_admin": "✗"
+      },
+      "change": [
+        "setOtaAllowed"
+      ]
+    },
+    {
+      "action": "Настройки платформы (пороги, интервалы)",
+      "cells": {
+        "admin": "✅",
+        "tech": "✗",
+        "exec": "✗",
+        "dispatcher": "✗",
+        "end_user": "✗",
+        "sig_admin": "✗"
+      },
+      "view": [
+        "getSettings",
+        "getDeviceSettings"
+      ],
+      "change": [
+        "updateSettings",
+        "updateDeviceSettings"
+      ]
+    },
+    {
+      "action": "Журнал аудита",
+      "cells": {
+        "admin": "✅",
+        "tech": "✗",
+        "exec": "👁",
+        "dispatcher": "✗",
+        "end_user": "✗",
+        "sig_admin": "✗"
+      },
+      "view": [
+        "listAudit"
+      ]
+    },
+    {
+      "action": "Создать арендатора и его первого Admin",
+      "cells": {
+        "admin": "✗",
+        "tech": "✗",
+        "exec": "✗",
+        "dispatcher": "✗",
+        "end_user": "✗",
+        "sig_admin": "✅"
+      },
+      "change": [
+        "createTenant"
+      ]
+    },
+    {
+      "action": "Вход, восстановление пароля, приглашение (без сессии, V-002)",
+      "public": [
+        "login",
+        "forgotPassword",
+        "resetPassword",
+        "acceptInvitation"
+      ]
+    }
+  ]
+}

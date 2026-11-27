@@ -1,0 +1,6586 @@
+# Источник — этот файл: правится руками, проверяется `npm test` (contracts/README.md).
+openapi: 3.1.0
+info:
+  title: iCooler API
+  version: 0.1.0
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
+  summary: REST API порталов оператора и End User, Stage 1
+  description: |
+    Каркас API по ТЗ Stage 1 (`doc/STAGE1_SPEC.md`): разделы 4.1–4.11, матрица прав 7.1, модель данных 7.2,
+    команды 7.3, значения по умолчанию 7.4, портал End User 7.5.
+
+    **Права.** У каждой операции `x-roles` — роли, которым она разрешена (матрица 7.1). Проверка на сервере
+    для каждого запроса: роль не из списка — `403`; объект другого арендатора или, для End User, чужого
+    клиента — `404` (существование не раскрывается). End User работает только с операциями `/eu/…`,
+    остальные ему запрещены.
+
+    **Сессия.** Порталы — cookie `session` (HttpOnly, Secure, SameSite=Strict); изменяющие запросы несут
+    заголовок `X-CSRF-Token` из ответа входа. Срок — 12 ч у оператора, 30 дней у End User с «запомнить меня» (7.4).
+
+    **Ошибки** — `application/problem+json` (RFC 9457). Лимиты запросов (7.4) — ответ `429` с `Retry-After`.
+
+    **Команды устройству** создаются операциями действий (`/devices/{deviceId}/actions/…`), возвращают
+    `202` и запись Command; итог — по `GET /commands/{commandId}` (статусы 7.3: pending → sent → ack →
+    success / error / expired). Повтор с тем же `Idempotency-Key` возвращает ту же команду.
+
+    **Двойное подтверждение** (V-108) — выключение нагрева, охлаждения, питания и сбросы: без `confirm: true`
+    в теле — `428`.
+servers:
+  - url: /api/v1
+tags:
+  - name: auth
+    description: Вход, сессии, приглашения (V-002)
+  - name: profile
+    description: Свой профиль (7.1)
+  - name: tenants
+    description: Арендаторы (SIG Administrator)
+  - name: users
+    description: Пользователи оператора (V-003)
+  - name: end-users
+    description: Учётные записи End User (7.5)
+  - name: clients
+    description: Клиенты, адреса, контакты (4.3)
+  - name: devices
+    description: Реестр и жизненный цикл (4.2)
+  - name: telemetry
+    description: Состояние, графики, события (4.5, 4.8)
+  - name: commands
+    description: Управление устройством (4.9, 7.3)
+  - name: water
+    description: Вода, фильтры, сбросы (4.6, 4.7, 7.2)
+  - name: alerts
+    description: Алерты и уведомления (4.10)
+  - name: dashboard
+    description: Дашборд, карта, отчёты (4.5, 4.3, 4.6)
+  - name: esim
+    description: eSIM — минимум Stage 1 (C-001, C-002, C-014, C-015)
+  - name: admin
+    description: Настройки, аудит, справочники (V-005, V-006, V-096)
+  - name: enduser
+    description: Портал End User — только свои кулеры (7.5)
+security:
+  - session: []
+paths:
+  /auth/login:
+    post:
+      tags:
+        - auth
+      operationId: login
+      summary: Вход по e-mail и паролю (оба портала)
+      description: 5 неудачных входов подряд на учётную запись — блокировка входа на 15 мин; лимит — 10 в минуту с IP (7.4).
+      security: []
+      x-roles:
+        - public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Вход выполнен; cookie `session` установлена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "423":
+          $ref: "#/components/responses/Locked"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /auth/logout:
+    post:
+      tags:
+        - auth
+      operationId: logout
+      summary: Выход из текущей сессии
+      x-roles:
+        - any
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Сессия завершена
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /auth/logout-all:
+    post:
+      tags:
+        - auth
+      operationId: logoutAll
+      summary: Выход со всех устройств (V-002)
+      x-roles:
+        - any
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Все сессии пользователя завершены
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /auth/password/forgot:
+    post:
+      tags:
+        - auth
+      operationId: forgotPassword
+      summary: Письмо для восстановления пароля
+      description: Ответ одинаковый, есть такой e-mail или нет. Лимит — 3 в час на e-mail и 20 в час с IP (7.4).
+      security: []
+      x-roles:
+        - public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailRequest"
+      responses:
+        "202":
+          description: Если учётная запись есть — письмо отправлено
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /auth/password/reset:
+    post:
+      tags:
+        - auth
+      operationId: resetPassword
+      summary: Новый пароль по токену из письма
+      security: []
+      x-roles:
+        - public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenPassword"
+      responses:
+        "204":
+          description: Пароль изменён, все сессии завершены
+        "410":
+          $ref: "#/components/responses/Gone"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /auth/invitations/accept:
+    post:
+      tags:
+        - auth
+      operationId: acceptInvitation
+      summary: Принять приглашение и задать пароль
+      description: Ссылка приглашения действует 72 ч (7.5).
+      security: []
+      x-roles:
+        - public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenPassword"
+      responses:
+        "200":
+          description: Учётная запись активна, вход выполнен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "410":
+          $ref: "#/components/responses/Gone"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /me:
+    get:
+      tags:
+        - profile
+      operationId: getProfile
+      summary: Свой профиль
+      x-roles:
+        - any
+      responses:
+        "200":
+          description: Профиль
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Profile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    patch:
+      tags:
+        - profile
+      operationId: updateProfile
+      summary: Изменить имя и язык
+      x-roles:
+        - any
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProfileUpdate"
+      responses:
+        "200":
+          description: Профиль
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Profile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /me/password:
+    put:
+      tags:
+        - profile
+      operationId: changePassword
+      summary: Сменить пароль
+      x-roles:
+        - any
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordChange"
+      responses:
+        "204":
+          description: Пароль изменён, прочие сессии завершены
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /tenants:
+    post:
+      tags:
+        - tenants
+      operationId: createTenant
+      summary: Создать арендатора и пригласить его первого Admin
+      x-roles:
+        - sig_admin
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TenantCreate"
+      responses:
+        "201":
+          description: Арендатор создан, приглашение отправлено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /users:
+    get:
+      tags:
+        - users
+      operationId: listUsers
+      summary: Пользователи оператора
+      x-roles:
+        - admin
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Search"
+        - name: role
+          in: query
+          schema:
+            $ref: "#/components/schemas/OperatorRole"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/UserStatus"
+      responses:
+        "200":
+          description: Страница
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    post:
+      tags:
+        - users
+      operationId: inviteUser
+      summary: Пригласить пользователя оператора
+      x-roles:
+        - admin
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserInvite"
+      responses:
+        "201":
+          description: Приглашение отправлено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /users/{userId}:
+    get:
+      tags:
+        - users
+      operationId: getUser
+      summary: Пользователь оператора
+      x-roles:
+        - admin
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: Пользователь
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    patch:
+      tags:
+        - users
+      operationId: updateUser
+      summary: Изменить имя, язык, роль
+      x-roles:
+        - admin
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdate"
+      responses:
+        "200":
+          description: Пользователь
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    delete:
+      tags:
+        - users
+      operationId: deleteUser
+      summary: Удалить (логически)
+      x-roles:
+        - admin
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Удалён, сессии завершены
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /users/{userId}/block:
+    post:
+      tags:
+        - users
+      operationId: blockUser
+      summary: Заблокировать — сессии завершаются сразу
+      x-roles:
+        - admin
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Заблокирован
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    delete:
+      tags:
+        - users
+      operationId: unblockUser
+      summary: Разблокировать
+      x-roles:
+        - admin
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Разблокирован
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /end-users:
+    get:
+      tags:
+        - end-users
+      operationId: listEndUsers
+      summary: Учётные записи End User
+      x-roles:
+        - admin
+        - dispatcher
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Search"
+        - name: client_id
+          in: query
+          schema:
+            $ref: "#/components/schemas/Id"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/UserStatus"
+      responses:
+        "200":
+          description: Страница
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EndUserPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    post:
+      tags:
+        - end-users
+      operationId: inviteEndUser
+      summary: Пригласить End User и привязать к клиенту (7.5)
+      x-roles:
+        - admin
+        - dispatcher
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EndUserInvite"
+      responses:
+        "201":
+          description: Приглашение отправлено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EndUser"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /end-users/{userId}:
+    get:
+      tags:
+        - end-users
+      operationId: getEndUser
+      summary: Учётная запись End User
+      x-roles:
+        - admin
+        - dispatcher
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: End User
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EndUser"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    patch:
+      tags:
+        - end-users
+      operationId: updateEndUser
+      summary: Изменить имя, язык
+      x-roles:
+        - admin
+        - dispatcher
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProfileUpdate"
+      responses:
+        "200":
+          description: End User
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EndUser"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    delete:
+      tags:
+        - end-users
+      operationId: deleteEndUser
+      summary: Удалить (логически)
+      x-roles:
+        - admin
+        - dispatcher
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Удалён, сессии завершены
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /end-users/{userId}/block:
+    post:
+      tags:
+        - end-users
+      operationId: blockEndUser
+      summary: Заблокировать — сессии End User завершаются сразу (7.5)
+      x-roles:
+        - admin
+        - dispatcher
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Заблокирован
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    delete:
+      tags:
+        - end-users
+      operationId: unblockEndUser
+      summary: Разблокировать
+      x-roles:
+        - admin
+        - dispatcher
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Разблокирован
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /end-users/{userId}/clients/{clientId}:
+    put:
+      tags:
+        - end-users
+      operationId: bindEndUserClient
+      summary: Привязать End User к клиенту
+      x-roles:
+        - admin
+        - dispatcher
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - $ref: "#/components/parameters/ClientId"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Привязан; дата и кто привязал — в записи доступа
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    delete:
+      tags:
+        - end-users
+      operationId: unbindEndUserClient
+      summary: Отвязать End User от клиента
+      x-roles:
+        - admin
+        - dispatcher
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - $ref: "#/components/parameters/ClientId"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Отвязан
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /clients:
+    get:
+      tags:
+        - clients
+      operationId: listClients
+      summary: Клиенты
+      x-roles: &a1
+        - admin
+        - tech
+        - exec
+        - dispatcher
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Search"
+        - name: region
+          in: query
+          schema:
+            $ref: "#/components/schemas/ShortText"
+      responses:
+        "200":
+          description: Страница
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    post:
+      tags:
+        - clients
+      operationId: createClient
+      summary: Создать клиента
+      x-roles: &a2
+        - admin
+        - tech
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientWrite"
+      responses:
+        "201":
+          description: Клиент
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /clients/{clientId}:
+    get:
+      tags:
+        - clients
+      operationId: getClient
+      summary: "Карточка клиента: адреса, контакты, сводка по кулерам (V-021, V-024)"
+      x-roles: *a1
+      parameters:
+        - $ref: "#/components/parameters/ClientId"
+      responses:
+        "200":
+          description: Карточка клиента
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientCard"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    patch:
+      tags:
+        - clients
+      operationId: updateClient
+      summary: Изменить клиента
+      x-roles: *a2
+      parameters:
+        - $ref: "#/components/parameters/ClientId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientWrite"
+      responses:
+        "200":
+          description: Клиент
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    delete:
+      tags:
+        - clients
+      operationId: deleteClient
+      summary: Удалить клиента (логически); с устройствами — 409
+      x-roles: *a2
+      parameters:
+        - $ref: "#/components/parameters/ClientId"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Удалён
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /clients/{clientId}/addresses:
+    post:
+      tags:
+        - clients
+      operationId: createAddress
+      summary: Добавить адрес установки (V-022)
+      x-roles: *a2
+      parameters:
+        - $ref: "#/components/parameters/ClientId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddressWrite"
+      responses:
+        "201":
+          description: Адрес
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Address"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /addresses/{addressId}:
+    patch:
+      tags:
+        - clients
+      operationId: updateAddress
+      summary: Изменить адрес; координаты — геокодирование или ручная правка
+      x-roles: *a2
+      parameters:
+        - $ref: "#/components/parameters/AddressId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddressWrite"
+      responses:
+        "200":
+          description: Адрес
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Address"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    delete:
+      tags:
+        - clients
+      operationId: deleteAddress
+      summary: Удалить адрес (логически); с устройствами — 409
+      x-roles: *a2
+      parameters:
+        - $ref: "#/components/parameters/AddressId"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Удалён
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /clients/{clientId}/contacts:
+    post:
+      tags:
+        - clients
+      operationId: createContact
+      summary: Добавить контактное лицо (V-023)
+      x-roles: *a2
+      parameters:
+        - $ref: "#/components/parameters/ClientId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactWrite"
+      responses:
+        "201":
+          description: Контакт
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contact"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /contacts/{contactId}:
+    patch:
+      tags:
+        - clients
+      operationId: updateContact
+      summary: Изменить контакт
+      x-roles: *a2
+      parameters:
+        - $ref: "#/components/parameters/ContactId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactWrite"
+      responses:
+        "200":
+          description: Контакт
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contact"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    delete:
+      tags:
+        - clients
+      operationId: deleteContact
+      summary: Удалить контакт (логически)
+      x-roles: *a2
+      parameters:
+        - $ref: "#/components/parameters/ContactId"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Удалён
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices:
+    get:
+      tags:
+        - devices
+      operationId: listDevices
+      summary: "Список устройств: поиск и фильтры (V-015)"
+      x-roles: *a1
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Search"
+        - $ref: "#/components/parameters/Sort"
+        - name: lifecycle
+          in: query
+          schema:
+            $ref: "#/components/schemas/LifecycleStatus"
+        - name: state
+          in: query
+          schema:
+            $ref: "#/components/schemas/TechState"
+        - name: client_id
+          in: query
+          schema:
+            $ref: "#/components/schemas/Id"
+        - name: region
+          in: query
+          schema:
+            $ref: "#/components/schemas/ShortText"
+        - name: alert_type
+          in: query
+          schema:
+            $ref: "#/components/schemas/AlertType"
+        - name: filter_left_max_pct
+          in: query
+          schema:
+            $ref: "#/components/schemas/Percent"
+        - name: fw
+          in: query
+          schema:
+            $ref: "#/components/schemas/ShortText"
+        - name: esim_status
+          in: query
+          schema:
+            $ref: "#/components/schemas/EsimStatus"
+        - name: model
+          in: query
+          schema:
+            $ref: "#/components/schemas/ShortText"
+        - name: ownership
+          in: query
+          schema:
+            $ref: "#/components/schemas/Ownership"
+      responses:
+        "200":
+          description: Страница
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DevicePage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    post:
+      tags:
+        - devices
+      operationId: createDevice
+      summary: Создать запись устройства (V-012, шаг 1)
+      description: Уникальность Device ID, серийника, IMEI проверяется (V-011) — иначе 409.
+      x-roles: *a2
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceCreate"
+      responses:
+        "201":
+          description: Устройство
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/import:
+    post:
+      tags:
+        - devices
+      operationId: importDevices
+      summary: Массовая загрузка CSV с проверкой (V-016)
+      description: При `dry_run=true` только проверка. Строки с ошибками не загружаются; отчёт — по каждой строке.
+      x-roles: *a2
+      parameters:
+        - name: dry_run
+          in: query
+          schema:
+            $ref: "#/components/schemas/Bool"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/CsvUpload"
+      responses:
+        "200":
+          description: "Отчёт: принято, ошибки по строкам"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportReport"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/export:
+    get:
+      tags:
+        - devices
+      operationId: exportDevices
+      summary: Экспорт списка CSV/XLSX с теми же фильтрами (V-016)
+      x-roles:
+        - admin
+        - tech
+        - exec
+      parameters:
+        - $ref: "#/components/parameters/Format"
+        - $ref: "#/components/parameters/Search"
+        - $ref: "#/components/parameters/Sort"
+        - name: lifecycle
+          in: query
+          schema:
+            $ref: "#/components/schemas/LifecycleStatus"
+        - name: state
+          in: query
+          schema:
+            $ref: "#/components/schemas/TechState"
+        - name: client_id
+          in: query
+          schema:
+            $ref: "#/components/schemas/Id"
+        - name: region
+          in: query
+          schema:
+            $ref: "#/components/schemas/ShortText"
+        - name: alert_type
+          in: query
+          schema:
+            $ref: "#/components/schemas/AlertType"
+        - name: filter_left_max_pct
+          in: query
+          schema:
+            $ref: "#/components/schemas/Percent"
+        - name: fw
+          in: query
+          schema:
+            $ref: "#/components/schemas/ShortText"
+        - name: esim_status
+          in: query
+          schema:
+            $ref: "#/components/schemas/EsimStatus"
+        - name: model
+          in: query
+          schema:
+            $ref: "#/components/schemas/ShortText"
+        - name: ownership
+          in: query
+          schema:
+            $ref: "#/components/schemas/Ownership"
+      responses:
+        "200":
+          description: Файл
+          content:
+            text/csv:
+              schema:
+                type: string
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                contentMediaType: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}:
+    get:
+      tags:
+        - devices
+      operationId: getDevice
+      summary: "Карточка устройства: реестр, клиент, адрес, текущее состояние, фильтр (V-067); eSIM — `GET
+        /devices/{deviceId}/esim`"
+      x-roles: *a1
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+      responses:
+        "200":
+          description: Карточка
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceCard"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    patch:
+      tags:
+        - devices
+      operationId: updateDevice
+      summary: Изменить данные реестра
+      x-roles: *a2
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceUpdate"
+      responses:
+        "200":
+          description: Устройство
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/transfer:
+    post:
+      tags:
+        - devices
+      operationId: transferDevice
+      summary: Перенести к другому клиенту/адресу — с историей (V-014)
+      x-roles: *a2
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceTransfer"
+      responses:
+        "200":
+          description: Устройство
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/lifecycle:
+    put:
+      tags:
+        - devices
+      operationId: setLifecycle
+      summary: Статус жизненного цикла (V-013)
+      x-roles: *a2
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LifecycleChange"
+      responses:
+        "200":
+          description: Устройство
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/ownership:
+    put:
+      tags:
+        - devices
+      operationId: setOwnership
+      summary: Аренда/покупка — с историей (P-09)
+      x-roles: *a2
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OwnershipChange"
+      responses:
+        "200":
+          description: Устройство
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/history:
+    get:
+      tags:
+        - devices
+      operationId: getDeviceHistory
+      summary: "История: клиент, адрес, статус, аренда/покупка"
+      x-roles: *a1
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Страница
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceHistoryPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/certificate:
+    post:
+      tags:
+        - devices
+      operationId: issueCertificate
+      summary: Выпустить или заменить сертификат и запись DPS (V-012, CERT)
+      description: Выполняет `provisioning` (дорожка Устройство). Ротация — второй сертификат в записи DPS, затем удаление
+        старого (CERT).
+      x-roles: *a2
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "202":
+          description: Выпуск запущен; ход — `GET /devices/{deviceId}/certificate`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CertificateJob"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    get:
+      tags:
+        - devices
+      operationId: getCertificate
+      summary: Сертификат устройства и ход последнего выпуска или ротации
+      x-roles: *a1
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+      responses:
+        "200":
+          description: Сертификат
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CertificateState"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/esim:
+    get:
+      tags:
+        - esim
+      operationId: getDeviceEsim
+      summary: Профиль eSIM устройства (C-002)
+      description: Нет привязанного профиля — 404.
+      x-roles:
+        - admin
+        - tech
+        - dispatcher
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+      responses:
+        "200":
+          description: Профиль
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EsimProfile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/block:
+    post:
+      tags:
+        - devices
+      operationId: blockDevice
+      summary: "Заблокировать в IoT Hub: отозвать доступ (V-032)"
+      x-roles: *a2
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Confirm"
+      responses:
+        "204":
+          description: Запись DPS отключена, устройство отключено в IoT Hub
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "428":
+          $ref: "#/components/responses/ConfirmationRequired"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    delete:
+      tags:
+        - devices
+      operationId: unblockDevice
+      summary: Разблокировать в IoT Hub
+      x-roles: *a2
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Доступ восстановлен
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/telemetry:
+    get:
+      tags:
+        - telemetry
+      operationId: getTelemetry
+      summary: "Графики: температура, счётчик, фильтр за период (V-068)"
+      x-roles: *a1
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - name: resolution
+          in: query
+          schema:
+            $ref: "#/components/schemas/Resolution"
+        - name: fields
+          in: query
+          schema:
+            $ref: "#/components/schemas/TelemetryFields"
+      responses:
+        "200":
+          description: Ряды
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TelemetrySeries"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/events:
+    get:
+      tags:
+        - telemetry
+      operationId: listDeviceEvents
+      summary: События устройства (7.3)
+      x-roles: *a1
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - name: type
+          in: query
+          schema:
+            $ref: "#/components/schemas/DeviceEventType"
+      responses:
+        "200":
+          description: Страница
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceEventPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/errors:
+    get:
+      tags:
+        - telemetry
+      operationId: listDeviceErrors
+      summary: "Журнал ошибок: код, описание, активна/устранена (V-095)"
+      x-roles: *a1
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - name: active
+          in: query
+          schema:
+            $ref: "#/components/schemas/Bool"
+      responses:
+        "200":
+          description: Страница
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEntryPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/pasteurizations:
+    get:
+      tags:
+        - telemetry
+      operationId: listPasteurizations
+      summary: Журнал пастеризаций (V-092); пусто, пока контроллер не передаёт сигналы (A-27)
+      x-roles: *a1
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - name: result
+          in: query
+          schema:
+            $ref: "#/components/schemas/PastResult"
+        - name: initiator
+          in: query
+          schema:
+            $ref: "#/components/schemas/PastInitiator"
+      responses:
+        "200":
+          description: Страница
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasteurizationPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /pasteurizations:
+    get:
+      tags:
+        - telemetry
+      operationId: listAllPasteurizations
+      summary: "Журнал пастеризаций по парку: фильтры по дате, статусу, устройству, клиенту, инициатору (V-093)"
+      x-roles: *a1
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - name: device_id
+          in: query
+          schema:
+            $ref: "#/components/schemas/Id"
+        - name: client_id
+          in: query
+          schema:
+            $ref: "#/components/schemas/Id"
+        - name: result
+          in: query
+          schema:
+            $ref: "#/components/schemas/PastResult"
+        - name: initiator
+          in: query
+          schema:
+            $ref: "#/components/schemas/PastInitiator"
+      responses:
+        "200":
+          description: Страница
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasteurizationPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/commands:
+    get:
+      tags:
+        - commands
+      operationId: listDeviceCommands
+      summary: "Журнал команд: пользователь, команда, payload, результат, время исполнения (V-098)"
+      x-roles: *a1
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/CommandStatus"
+      responses:
+        "200":
+          description: Страница
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommandPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /commands/{commandId}:
+    get:
+      tags:
+        - commands
+      operationId: getCommand
+      summary: Команда и её статус
+      x-roles: *a1
+      parameters:
+        - $ref: "#/components/parameters/CommandId"
+      responses:
+        "200":
+          description: Команда
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Command"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/actions/refresh:
+    post:
+      tags:
+        - commands
+      operationId: requestData
+      summary: «Запросить данные сейчас» — `GET all` (V-101)
+      description: Успех — свежий внеочередной кадр с `cmd_id` за 30 с от создания (7.3 п. 6); иначе `expired`.
+      x-roles:
+        - admin
+        - tech
+        - dispatcher
+      x-commands:
+        - op: GET
+          param: all
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "202":
+          description: Команда создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Command"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/actions/selftest:
+    post:
+      tags:
+        - commands
+      operationId: runSelftest
+      summary: Самодиагностика — `POST selftest:1` (V-107)
+      x-roles:
+        - admin
+        - tech
+        - dispatcher
+      x-commands:
+        - op: POST
+          param: selftest
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "202":
+          description: Команда создана; проверки — в `result.checks`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Command"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/actions/heating:
+    put:
+      tags:
+        - commands
+      operationId: setHeating
+      summary: Нагрев вкл/выкл — `POST hottank` (V-103)
+      x-roles: *a2
+      x-commands:
+        - op: POST
+          param: hottank
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SwitchConfirm"
+      responses:
+        "202":
+          description: Команда создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Command"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "428":
+          $ref: "#/components/responses/ConfirmationRequired"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/actions/cooling:
+    put:
+      tags:
+        - commands
+      operationId: setCooling
+      summary: Охлаждение вкл/выкл — `POST coldtank` (V-104)
+      x-roles: *a2
+      x-commands:
+        - op: POST
+          param: coldtank
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SwitchConfirm"
+      responses:
+        "202":
+          description: Команда создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Command"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "428":
+          $ref: "#/components/responses/ConfirmationRequired"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/actions/power:
+    put:
+      tags:
+        - commands
+      operationId: setPower
+      summary: Питание — общий вкл/выкл нагрева и охлаждения, `POST power` (V-105)
+      x-roles: *a2
+      x-commands:
+        - op: POST
+          param: power
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SwitchConfirm"
+      responses:
+        "202":
+          description: Команда создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Command"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "428":
+          $ref: "#/components/responses/ConfirmationRequired"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/actions/energy-saving:
+    put:
+      tags:
+        - commands
+      operationId: setEnergySaving
+      summary: Энергосбережение — работа по расписанию, `POST energysaving` (V-105)
+      x-roles: *a2
+      x-commands:
+        - op: POST
+          param: energysaving
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Switch"
+      responses:
+        "202":
+          description: Команда создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Command"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/actions/ota-allowed:
+    put:
+      tags:
+        - commands
+      operationId: setOtaAllowed
+      summary: Разрешить/запретить обновление по воздуху — `POST otaallowed` (FW-7)
+      x-roles:
+        - admin
+      x-commands:
+        - op: POST
+          param: otaallowed
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Switch"
+      responses:
+        "202":
+          description: Команда создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Command"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/schedule:
+    get:
+      tags:
+        - commands
+      operationId: getSchedule
+      summary: "Расписание: действующая версия платформы и состояние на устройстве (7.3)"
+      x-roles: *a1
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+      responses:
+        "200":
+          description: Расписание
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduleState"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    put:
+      tags:
+        - commands
+      operationId: setSchedule
+      summary: Новое расписание — новая версия; отправка последовательностью timezone → autopowerscheduling → schedversion
+        (V-106)
+      description: Если расписание изменено на месте и ещё не сохранено платформой — 409 (7.3, «Изменение на месте»).
+      x-roles: *a2
+      x-commands:
+        - op: POST
+          param: timezone
+        - op: POST
+          param: autopowerscheduling
+        - op: POST
+          param: schedversion
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduleWrite"
+      responses:
+        "202":
+          description: Версия создана, отправка идёт
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduleState"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/schedule/versions:
+    get:
+      tags:
+        - commands
+      operationId: listScheduleVersions
+      summary: История версий расписания, в том числе «изменено на месте»
+      x-roles: *a1
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Страница
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduleVersionPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/consumption:
+    get:
+      tags:
+        - water
+      operationId: getConsumption
+      summary: Потребление за период по шагам и с последнего сброса (P-02, 7.2)
+      x-roles: *a1
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - $ref: "#/components/parameters/Bucket"
+      responses:
+        "200":
+          description: Потребление
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Consumption"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/consumption-resets:
+    post:
+      tags:
+        - water
+      operationId: resetConsumption
+      summary: Сброс счётчика потребления — точка отсчёта на платформе (7.2)
+      x-roles: *a2
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Confirm"
+      responses:
+        "201":
+          description: Точка отсчёта записана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsumptionReset"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "428":
+          $ref: "#/components/responses/ConfirmationRequired"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/resets:
+    get:
+      tags:
+        - water
+      operationId: listResets
+      summary: "Журнал сбросов: счётчик потребления и замены фильтра, кто и когда — в том числе End User (7.5, экран 5)"
+      x-roles: *a1
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - name: kind
+          in: query
+          schema:
+            $ref: "#/components/schemas/ResetKind"
+      responses:
+        "200":
+          description: Страница
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResetPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/filter:
+    get:
+      tags:
+        - water
+      operationId: getFilter
+      summary: "Фильтр: дата установки, кто, ресурс, остаток, прогноз (V-085, V-086)"
+      x-roles: *a1
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+      responses:
+        "200":
+          description: Фильтр
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Filter"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/filter/reset:
+    post:
+      tags:
+        - water
+      operationId: resetFilter
+      summary: "Замена фильтра: запись Filter и команда `POST filterreset:1` (V-089)"
+      x-roles: *a2
+      x-commands:
+        - op: POST
+          param: filterreset
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Confirm"
+      responses:
+        "202":
+          description: Записано; команда устройству создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FilterReset"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "428":
+          $ref: "#/components/responses/ConfirmationRequired"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /filters/upcoming:
+    get:
+      tags:
+        - water
+      operationId: listUpcomingFilters
+      summary: Ближайшие замены фильтров (V-087)
+      x-roles: *a1
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - name: days
+          in: query
+          schema:
+            $ref: "#/components/schemas/Days"
+        - name: client_id
+          in: query
+          schema:
+            $ref: "#/components/schemas/Id"
+      responses:
+        "200":
+          description: Страница
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FilterPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /alerts:
+    get:
+      tags:
+        - alerts
+      operationId: listAlerts
+      summary: Алерты
+      x-roles: *a1
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/AlertStatus"
+        - name: type
+          in: query
+          schema:
+            $ref: "#/components/schemas/AlertType"
+        - name: severity
+          in: query
+          schema:
+            $ref: "#/components/schemas/Severity"
+        - name: device_id
+          in: query
+          schema:
+            $ref: "#/components/schemas/Id"
+        - name: client_id
+          in: query
+          schema:
+            $ref: "#/components/schemas/Id"
+        - name: assignee_id
+          in: query
+          schema:
+            $ref: "#/components/schemas/Id"
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+      responses:
+        "200":
+          description: Страница
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /alerts/{alertId}:
+    get:
+      tags:
+        - alerts
+      operationId: getAlert
+      summary: Алерт
+      x-roles: *a1
+      parameters:
+        - $ref: "#/components/parameters/AlertId"
+      responses:
+        "200":
+          description: Алерт
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Alert"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /alerts/{alertId}/acknowledge:
+    post:
+      tags:
+        - alerts
+      operationId: acknowledgeAlert
+      summary: Принять
+      x-roles:
+        - admin
+        - tech
+        - dispatcher
+      parameters:
+        - $ref: "#/components/parameters/AlertId"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "200":
+          description: Алерт
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Alert"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /alerts/{alertId}/assignee:
+    put:
+      tags:
+        - alerts
+      operationId: assignAlert
+      summary: Назначить ответственного
+      x-roles:
+        - admin
+        - tech
+        - dispatcher
+      parameters:
+        - $ref: "#/components/parameters/AlertId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AlertAssign"
+      responses:
+        "200":
+          description: Алерт
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Alert"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /alerts/{alertId}/close:
+    post:
+      tags:
+        - alerts
+      operationId: closeAlert
+      summary: Закрыть
+      x-roles:
+        - admin
+        - tech
+        - dispatcher
+      parameters:
+        - $ref: "#/components/parameters/AlertId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AlertClose"
+      responses:
+        "200":
+          description: Алерт
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Alert"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /notifications:
+    get:
+      tags:
+        - alerts
+      operationId: listNotifications
+      summary: Лента уведомлений и счётчик непрочитанных (V-119)
+      x-roles: *a1
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - name: unread
+          in: query
+          schema:
+            $ref: "#/components/schemas/Bool"
+      responses:
+        "200":
+          description: Страница
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /notifications/read:
+    post:
+      tags:
+        - alerts
+      operationId: markNotificationsRead
+      summary: Отметить прочитанными
+      x-roles: *a1
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationsRead"
+      responses:
+        "204":
+          description: Отмечены
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /dashboard:
+    get:
+      tags:
+        - dashboard
+      operationId: getDashboard
+      summary: "Дашборд: устройства, online/offline, алерты по типам, литры, фильтры, проблемные (V-062…V-066)"
+      x-roles: *a1
+      parameters:
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+      responses:
+        "200":
+          description: Сводка
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dashboard"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /map:
+    get:
+      tags:
+        - dashboard
+      operationId: getMap
+      summary: "Карта: кластеры на сервере, маркеры и их цвет (V-025…V-027)"
+      x-roles: *a1
+      parameters:
+        - name: bbox
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/Bbox"
+        - name: zoom
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/Zoom"
+        - name: state
+          in: query
+          schema:
+            $ref: "#/components/schemas/TechState"
+        - name: client_id
+          in: query
+          schema:
+            $ref: "#/components/schemas/Id"
+        - name: region
+          in: query
+          schema:
+            $ref: "#/components/schemas/ShortText"
+        - name: alert_type
+          in: query
+          schema:
+            $ref: "#/components/schemas/AlertType"
+        - name: filter_left_max_pct
+          in: query
+          schema:
+            $ref: "#/components/schemas/Percent"
+      responses:
+        "200":
+          description: Кластеры и маркеры
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MapView"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /reports/consumption:
+    get:
+      tags:
+        - dashboard
+      operationId: reportConsumption
+      summary: Потребление по устройствам, клиентам, адресам, регионам за период (V-077…V-080)
+      x-roles: *a1
+      parameters:
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - $ref: "#/components/parameters/Bucket"
+        - name: group_by
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/GroupBy"
+        - name: client_id
+          in: query
+          schema:
+            $ref: "#/components/schemas/Id"
+      responses:
+        "200":
+          description: Отчёт
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsumptionReport"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /reports/ranking:
+    get:
+      tags:
+        - dashboard
+      operationId: reportRanking
+      summary: Рейтинг устройств по литрам (V-079)
+      x-roles: *a1
+      parameters:
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Рейтинг
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RankingReport"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /reports/consumption/export:
+    get:
+      tags:
+        - dashboard
+      operationId: exportConsumption
+      summary: Экспорт отчёта потребления CSV/XLSX (V-081)
+      x-roles:
+        - admin
+        - tech
+        - exec
+      parameters:
+        - $ref: "#/components/parameters/Format"
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - $ref: "#/components/parameters/Bucket"
+        - name: group_by
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/GroupBy"
+      responses:
+        "200":
+          description: Файл
+          content:
+            text/csv:
+              schema:
+                type: string
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                contentMediaType: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /esim/profiles:
+    get:
+      tags:
+        - esim
+      operationId: listEsimProfiles
+      summary: Профили eSIM (C-001)
+      x-roles:
+        - admin
+        - tech
+        - dispatcher
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Search"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/EsimStatus"
+        - name: bound
+          in: query
+          schema:
+            $ref: "#/components/schemas/Bool"
+      responses:
+        "200":
+          description: Страница
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EsimProfilePage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    post:
+      tags:
+        - esim
+      operationId: createEsimProfile
+      summary: Внести профиль вручную
+      x-roles:
+        - admin
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EsimProfileWrite"
+      responses:
+        "201":
+          description: Профиль
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EsimProfile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /esim/profiles/import:
+    post:
+      tags:
+        - esim
+      operationId: importEsimProfiles
+      summary: Импорт профилей CSV
+      x-roles:
+        - admin
+      parameters:
+        - name: dry_run
+          in: query
+          schema:
+            $ref: "#/components/schemas/Bool"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/CsvUpload"
+      responses:
+        "200":
+          description: Отчёт
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportReport"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /esim/profiles/{profileId}:
+    get:
+      tags:
+        - esim
+      operationId: getEsimProfile
+      summary: Профиль и его операции
+      x-roles:
+        - admin
+        - tech
+        - dispatcher
+      parameters:
+        - $ref: "#/components/parameters/ProfileId"
+      responses:
+        "200":
+          description: Профиль
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EsimProfile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    patch:
+      tags:
+        - esim
+      operationId: updateEsimProfile
+      summary: Изменить профиль (кроме статуса — он меняется операциями)
+      x-roles:
+        - admin
+      parameters:
+        - $ref: "#/components/parameters/ProfileId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EsimProfileWrite"
+      responses:
+        "200":
+          description: Профиль
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EsimProfile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /esim/profiles/{profileId}/device:
+    put:
+      tags:
+        - esim
+      operationId: bindEsimProfile
+      summary: Привязать номер к устройству (C-002)
+      x-roles:
+        - admin
+      parameters:
+        - $ref: "#/components/parameters/ProfileId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EsimBind"
+      responses:
+        "200":
+          description: Профиль
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EsimProfile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    delete:
+      tags:
+        - esim
+      operationId: unbindEsimProfile
+      summary: Отвязать от устройства
+      x-roles:
+        - admin
+      parameters:
+        - $ref: "#/components/parameters/ProfileId"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "200":
+          description: Профиль
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EsimProfile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /esim/profiles/{profileId}/operations:
+    post:
+      tags:
+        - esim
+      operationId: createEsimOperation
+      summary: Заявка на ручную операцию у провайдера (C-015)
+      x-roles:
+        - admin
+      parameters:
+        - $ref: "#/components/parameters/ProfileId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EsimOperationCreate"
+      responses:
+        "201":
+          description: Заявка создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EsimOperation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /esim/operations/{operationId}/confirm:
+    post:
+      tags:
+        - esim
+      operationId: confirmEsimOperation
+      summary: Внести подтверждение провайдера — только после него меняется статус профиля (C-015)
+      x-roles:
+        - admin
+      parameters:
+        - $ref: "#/components/parameters/OperationId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EsimOperationConfirm"
+      responses:
+        "200":
+          description: Операция подтверждена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EsimOperation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /settings:
+    get:
+      tags:
+        - admin
+      operationId: getSettings
+      summary: Настройки арендатора с унаследованными значениями платформы (V-006, 7.4)
+      x-roles:
+        - admin
+      responses:
+        "200":
+          description: Настройки
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    patch:
+      tags:
+        - admin
+      operationId: updateSettings
+      summary: Изменить настройки арендатора
+      x-roles:
+        - admin
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsWrite"
+      responses:
+        "200":
+          description: Настройки
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /devices/{deviceId}/settings:
+    get:
+      tags:
+        - admin
+      operationId: getDeviceSettings
+      summary: Настройки устройства с унаследованными
+      x-roles:
+        - admin
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+      responses:
+        "200":
+          description: Настройки
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    patch:
+      tags:
+        - admin
+      operationId: updateDeviceSettings
+      summary: Изменить настройки устройства; `null` — вернуть унаследованное
+      x-roles:
+        - admin
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsWrite"
+      responses:
+        "200":
+          description: Настройки
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /audit-log:
+    get:
+      tags:
+        - admin
+      operationId: listAudit
+      summary: "Журнал аудита: фильтр по пользователю, действию, периоду (V-005)"
+      x-roles:
+        - admin
+        - exec
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - name: user_id
+          in: query
+          schema:
+            $ref: "#/components/schemas/Id"
+        - name: action
+          in: query
+          schema:
+            $ref: "#/components/schemas/ShortText"
+        - name: object_type
+          in: query
+          schema:
+            $ref: "#/components/schemas/ShortText"
+        - name: object_id
+          in: query
+          schema:
+            $ref: "#/components/schemas/Id"
+      responses:
+        "200":
+          description: Страница
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /error-codes:
+    get:
+      tags:
+        - admin
+      operationId: listErrorCodes
+      summary: Справочник кодов ошибок (V-096, RE-4)
+      x-roles: *a1
+      responses:
+        "200":
+          description: Справочник
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorCodeList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /eu/clients:
+    get:
+      tags:
+        - enduser
+      operationId: euListClients
+      summary: Мои клиенты — для переключателя (7.5)
+      x-roles:
+        - end_user
+      responses:
+        "200":
+          description: Клиенты
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EuClientList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /eu/devices:
+    get:
+      tags:
+        - enduser
+      operationId: euListDevices
+      summary: "Мои кулеры: адрес, этаж и место, статус, ресурс фильтра (7.5, экран 2)"
+      x-roles:
+        - end_user
+      parameters:
+        - name: client_id
+          in: query
+          schema:
+            $ref: "#/components/schemas/Id"
+      responses:
+        "200":
+          description: Кулеры
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EuDeviceList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /eu/devices/{deviceId}:
+    get:
+      tags:
+        - enduser
+      operationId: euGetDevice
+      summary: Карточка кулера (7.5, экран 3)
+      x-roles:
+        - end_user
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+      responses:
+        "200":
+          description: Кулер
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EuDevice"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /eu/devices/{deviceId}/consumption:
+    get:
+      tags:
+        - enduser
+      operationId: euGetConsumption
+      summary: Потребление за день/неделю/месяц/свой период (P-01a)
+      x-roles:
+        - end_user
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - $ref: "#/components/parameters/Bucket"
+      responses:
+        "200":
+          description: Потребление
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Consumption"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /eu/devices/{deviceId}/actions/refresh:
+    post:
+      tags:
+        - enduser
+      operationId: euRequestData
+      summary: «Запросить данные сейчас»
+      x-roles:
+        - end_user
+      x-commands:
+        - op: GET
+          param: all
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "202":
+          description: Команда создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EuCommand"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /eu/devices/{deviceId}/actions/heating:
+    put:
+      tags:
+        - enduser
+      operationId: euSetHeating
+      summary: Нагрев вкл/выкл
+      x-roles:
+        - end_user
+      x-commands:
+        - op: POST
+          param: hottank
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SwitchConfirm"
+      responses:
+        "202":
+          description: Команда создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EuCommand"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "428":
+          $ref: "#/components/responses/ConfirmationRequired"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /eu/devices/{deviceId}/actions/cooling:
+    put:
+      tags:
+        - enduser
+      operationId: euSetCooling
+      summary: Охлаждение вкл/выкл
+      x-roles:
+        - end_user
+      x-commands:
+        - op: POST
+          param: coldtank
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SwitchConfirm"
+      responses:
+        "202":
+          description: Команда создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EuCommand"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "428":
+          $ref: "#/components/responses/ConfirmationRequired"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /eu/devices/{deviceId}/actions/power:
+    put:
+      tags:
+        - enduser
+      operationId: euSetPower
+      summary: Питание вкл/выкл
+      x-roles:
+        - end_user
+      x-commands:
+        - op: POST
+          param: power
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SwitchConfirm"
+      responses:
+        "202":
+          description: Команда создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EuCommand"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "428":
+          $ref: "#/components/responses/ConfirmationRequired"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /eu/devices/{deviceId}/actions/energy-saving:
+    put:
+      tags:
+        - enduser
+      operationId: euSetEnergySaving
+      summary: Энергосбережение вкл/выкл
+      x-roles:
+        - end_user
+      x-commands:
+        - op: POST
+          param: energysaving
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Switch"
+      responses:
+        "202":
+          description: Команда создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EuCommand"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /eu/commands/{commandId}:
+    get:
+      tags:
+        - enduser
+      operationId: euGetCommand
+      summary: Результат своей команды (7.5, экран 4)
+      x-roles:
+        - end_user
+      parameters:
+        - $ref: "#/components/parameters/CommandId"
+      responses:
+        "200":
+          description: Команда
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EuCommand"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /eu/devices/{deviceId}/schedule:
+    get:
+      tags:
+        - enduser
+      operationId: euGetSchedule
+      summary: Расписание
+      x-roles:
+        - end_user
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+      responses:
+        "200":
+          description: Расписание
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduleState"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    put:
+      tags:
+        - enduser
+      operationId: euSetSchedule
+      summary: Изменить расписание
+      x-roles:
+        - end_user
+      x-commands:
+        - op: POST
+          param: timezone
+        - op: POST
+          param: autopowerscheduling
+        - op: POST
+          param: schedversion
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduleWrite"
+      responses:
+        "202":
+          description: Версия создана, отправка идёт
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduleState"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /eu/devices/{deviceId}/filter/reset:
+    post:
+      tags:
+        - enduser
+      operationId: euResetFilter
+      summary: Сброс ресурса фильтра (7.5, экран 5)
+      x-roles:
+        - end_user
+      x-commands:
+        - op: POST
+          param: filterreset
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Confirm"
+      responses:
+        "202":
+          description: Записано; команда устройству создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FilterReset"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "428":
+          $ref: "#/components/responses/ConfirmationRequired"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /eu/devices/{deviceId}/consumption-resets:
+    post:
+      tags:
+        - enduser
+      operationId: euResetConsumption
+      summary: Сброс счётчика потребления (7.5, экран 5)
+      x-roles:
+        - end_user
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Confirm"
+      responses:
+        "201":
+          description: Точка отсчёта записана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsumptionReset"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "428":
+          $ref: "#/components/responses/ConfirmationRequired"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /eu/alerts:
+    get:
+      tags:
+        - enduser
+      operationId: euListAlerts
+      summary: Мои алерты — только фильтр и офлайн (7.1)
+      x-roles:
+        - end_user
+      parameters:
+        - name: client_id
+          in: query
+          schema:
+            $ref: "#/components/schemas/Id"
+      responses:
+        "200":
+          description: Алерты
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EuAlertList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: session
+      description: Сессия портала; изменяющие запросы — с заголовком `X-CSRF-Token`.
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      description: Размер страницы
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    Cursor:
+      name: cursor
+      in: query
+      description: Курсор следующей страницы из `next_cursor`
+      schema:
+        type: string
+        maxLength: 512
+    Search:
+      name: q
+      in: query
+      description: Поиск по названию, идентификаторам, адресу
+      schema:
+        type: string
+        maxLength: 200
+    Sort:
+      name: sort
+      in: query
+      description: Поле сортировки; `-` — по убыванию
+      schema:
+        type: string
+        pattern: ^-?[a-z_]{1,40}$
+    From:
+      name: from
+      in: query
+      description: Начало периода, UTC
+      schema:
+        type: string
+        format: date-time
+    To:
+      name: to
+      in: query
+      description: Конец периода (не включая), UTC
+      schema:
+        type: string
+        format: date-time
+    Bucket:
+      name: bucket
+      in: query
+      description: Шаг агрегации
+      schema:
+        $ref: "#/components/schemas/Bucket"
+    Format:
+      name: format
+      in: query
+      required: true
+      schema:
+        enum:
+          - csv
+          - xlsx
+    CsrfToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      description: Токен из ответа входа; нет или не совпадает — 403
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 256
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      description: Повтор запроса с тем же ключом возвращает уже созданную команду (7.2, Command)
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 64
+        pattern: ^[A-Za-z0-9_-]+$
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Id"
+    ClientId:
+      name: clientId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Id"
+    AddressId:
+      name: addressId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Id"
+    ContactId:
+      name: contactId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Id"
+    DeviceId:
+      name: deviceId
+      in: path
+      required: true
+      description: Внутренний идентификатор записи устройства (не Device ID IoT Hub)
+      schema:
+        $ref: "#/components/schemas/Id"
+    CommandId:
+      name: commandId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Id"
+    AlertId:
+      name: alertId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Id"
+    ProfileId:
+      name: profileId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Id"
+    OperationId:
+      name: operationId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Id"
+  responses:
+    Unauthorized:
+      description: Нет сессии или она истекла
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Forbidden:
+      description: Роли это не разрешено (матрица 7.1) либо нет или неверен `X-CSRF-Token`
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    NotFound:
+      description: Нет такого объекта — или он другого арендатора, или, для End User, чужого клиента
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Conflict:
+      description: Конфликт с текущим состоянием (уникальность, статус, версия)
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Gone:
+      description: Ссылка или токен истекли либо уже использованы
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Locked:
+      description: Вход временно заблокирован после неудачных попыток (7.4)
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    ValidationError:
+      description: Тело или параметры не прошли проверку
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ValidationProblem"
+    ConfirmationRequired:
+      description: Нужно двойное подтверждение (V-108) — повторить с `confirm true`
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    TooManyRequests:
+      description: Превышен лимит запросов (7.4)
+      headers:
+        Retry-After:
+          description: Через сколько секунд повторить
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+  schemas:
+    Id:
+      type: string
+      format: uuid
+    Timestamp:
+      type: string
+      format: date-time
+      description: UTC
+    ShortText:
+      type: string
+      minLength: 1
+      maxLength: 200
+    Bool:
+      type: boolean
+    Percent:
+      type: number
+      minimum: 0
+      maximum: 100
+    Days:
+      type: integer
+      minimum: 1
+      maximum: 366
+      default: 30
+    Zoom:
+      type: integer
+      minimum: 0
+      maximum: 22
+    Bbox:
+      type: string
+      description: "Долгота и широта углов: `min_lng,min_lat,max_lng,max_lat`"
+      pattern: ^-?[0-9.]+,-?[0-9.]+,-?[0-9.]+,-?[0-9.]+$
+    Bucket:
+      enum:
+        - hour
+        - day
+        - week
+        - month
+        - quarter
+    Resolution:
+      enum:
+        - raw
+        - hour
+        - day
+      description: raw — кадры как есть (180 дней), hour/day — агрегаты (V-036)
+    GroupBy:
+      enum:
+        - device
+        - client
+        - address
+        - region
+    TelemetryFields:
+      type: string
+      description: "Поля через запятую: t_hot, t_cold, water_total_l, filter_left_pct, rsrp"
+      pattern: ^(t_hot|t_cold|water_total_l|filter_left_pct|rsrp)(,(t_hot|t_cold|water_total_l|filter_left_pct|rsrp))*$
+    Language:
+      enum:
+        - lv
+        - ru
+        - en
+        - et
+        - lt
+    PersonName:
+      type: string
+      minLength: 1
+      maxLength: 120
+    Email:
+      type: string
+      format: email
+      maxLength: 254
+    Password:
+      type: string
+      minLength: 12
+      maxLength: 128
+    Phone:
+      type: string
+      pattern: ^\+?[0-9 ()-]{5,32}$
+    Problem:
+      type: object
+      description: RFC 9457
+      required:
+        - type
+        - title
+        - status
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+        instance:
+          type: string
+    ValidationProblem:
+      allOf:
+        - $ref: "#/components/schemas/Problem"
+        - type: object
+          properties:
+            errors:
+              type: array
+              items:
+                type: object
+                required:
+                  - path
+                  - message
+                properties:
+                  path:
+                    type: string
+                    description: JSON Pointer поля
+                  message:
+                    type: string
+    Page:
+      type: object
+      required:
+        - items
+        - next_cursor
+      properties:
+        next_cursor:
+          type:
+            - string
+            - "null"
+          description: null — страница последняя
+    Confirm:
+      type: object
+      additionalProperties: false
+      required:
+        - confirm
+      properties:
+        confirm:
+          const: true
+          description: Двойное подтверждение (V-108)
+    Switch:
+      type: object
+      additionalProperties: false
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
+    SwitchConfirm:
+      type: object
+      additionalProperties: false
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
+        confirm:
+          type: boolean
+          description: "Обязательно `true` при выключении (`enabled: false`) — двойное подтверждение V-108; иначе 428"
+    CsvUpload:
+      type: object
+      required:
+        - file
+      properties:
+        file:
+          type: string
+          contentMediaType: text/csv
+          description: CSV в UTF-8, первая строка — заголовки
+    ImportReport:
+      type: object
+      required:
+        - total
+        - accepted
+        - errors
+      properties:
+        total:
+          type: integer
+          minimum: 0
+        accepted:
+          type: integer
+          minimum: 0
+        dry_run:
+          type: boolean
+        errors:
+          type: array
+          items:
+            type: object
+            required:
+              - row
+              - message
+            properties:
+              row:
+                type: integer
+                minimum: 1
+              column:
+                type: string
+              message:
+                type: string
+    Role:
+      enum:
+        - admin
+        - tech
+        - exec
+        - dispatcher
+        - end_user
+        - sig_admin
+      description: Роли раздела 2
+    OperatorRole:
+      enum:
+        - admin
+        - tech
+        - exec
+        - dispatcher
+    UserStatus:
+      enum:
+        - invited
+        - active
+        - blocked
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - email
+        - password
+      properties:
+        email:
+          $ref: "#/components/schemas/Email"
+        password:
+          type: string
+          minLength: 1
+          maxLength: 128
+        remember_me:
+          type: boolean
+          default: false
+          description: "End User: сессия 30 дней (7.4)"
+    EmailRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - email
+      properties:
+        email:
+          $ref: "#/components/schemas/Email"
+    TokenPassword:
+      type: object
+      additionalProperties: false
+      required:
+        - token
+        - password
+      properties:
+        token:
+          type: string
+          minLength: 16
+          maxLength: 256
+        password:
+          $ref: "#/components/schemas/Password"
+    PasswordChange:
+      type: object
+      additionalProperties: false
+      required:
+        - current_password
+        - new_password
+      properties:
+        current_password:
+          type: string
+          minLength: 1
+          maxLength: 128
+        new_password:
+          $ref: "#/components/schemas/Password"
+    Session:
+      type: object
+      required:
+        - user
+        - csrf_token
+        - expires_at
+      properties:
+        user:
+          $ref: "#/components/schemas/Profile"
+        csrf_token:
+          type: string
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+    Profile:
+      type: object
+      required:
+        - id
+        - email
+        - name
+        - language
+        - role
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        email:
+          $ref: "#/components/schemas/Email"
+        name:
+          $ref: "#/components/schemas/PersonName"
+        language:
+          $ref: "#/components/schemas/Language"
+        role:
+          $ref: "#/components/schemas/Role"
+        tenant_id:
+          type:
+            - string
+            - "null"
+          format: uuid
+          description: null — SIG Administrator
+    ProfileUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name:
+          $ref: "#/components/schemas/PersonName"
+        language:
+          $ref: "#/components/schemas/Language"
+    User:
+      type: object
+      required:
+        - id
+        - email
+        - name
+        - language
+        - role
+        - status
+        - created_at
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        email:
+          $ref: "#/components/schemas/Email"
+        name:
+          $ref: "#/components/schemas/PersonName"
+        language:
+          $ref: "#/components/schemas/Language"
+        role:
+          $ref: "#/components/schemas/OperatorRole"
+        status:
+          $ref: "#/components/schemas/UserStatus"
+        last_login_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+    UserInvite:
+      type: object
+      additionalProperties: false
+      required:
+        - email
+        - name
+        - role
+      properties:
+        email:
+          $ref: "#/components/schemas/Email"
+        name:
+          $ref: "#/components/schemas/PersonName"
+        role:
+          $ref: "#/components/schemas/OperatorRole"
+        language:
+          $ref: "#/components/schemas/Language"
+    UserUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name:
+          $ref: "#/components/schemas/PersonName"
+        language:
+          $ref: "#/components/schemas/Language"
+        role:
+          $ref: "#/components/schemas/OperatorRole"
+    UserPage:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/User"
+    EndUser:
+      type: object
+      required:
+        - id
+        - email
+        - name
+        - language
+        - status
+        - clients
+        - created_at
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        email:
+          $ref: "#/components/schemas/Email"
+        name:
+          $ref: "#/components/schemas/PersonName"
+        language:
+          $ref: "#/components/schemas/Language"
+        status:
+          $ref: "#/components/schemas/UserStatus"
+        clients:
+          type: array
+          items:
+            type: object
+            required:
+              - client_id
+              - name
+              - bound_at
+              - bound_by
+            properties:
+              client_id:
+                $ref: "#/components/schemas/Id"
+              name:
+                type: string
+              bound_at:
+                $ref: "#/components/schemas/Timestamp"
+              bound_by:
+                $ref: "#/components/schemas/Id"
+        last_login_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+    EndUserInvite:
+      type: object
+      additionalProperties: false
+      required:
+        - email
+        - name
+        - client_id
+      properties:
+        email:
+          $ref: "#/components/schemas/Email"
+        name:
+          $ref: "#/components/schemas/PersonName"
+        client_id:
+          $ref: "#/components/schemas/Id"
+        language:
+          $ref: "#/components/schemas/Language"
+    EndUserPage:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/EndUser"
+    TenantCreate:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - code
+        - admin_email
+        - admin_name
+      properties:
+        name:
+          $ref: "#/components/schemas/ShortText"
+        code:
+          type: string
+          pattern: ^[a-z0-9-]{2,32}$
+        admin_email:
+          $ref: "#/components/schemas/Email"
+        admin_name:
+          $ref: "#/components/schemas/PersonName"
+    Tenant:
+      type: object
+      required:
+        - id
+        - name
+        - code
+        - created_at
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        name:
+          type: string
+        code:
+          type: string
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+    ClientType:
+      enum:
+        - organization
+        - person
+    ClientFields:
+      type: object
+      required:
+        - type
+        - name
+      properties:
+        type:
+          $ref: "#/components/schemas/ClientType"
+        name:
+          $ref: "#/components/schemas/ShortText"
+        reg_number:
+          type:
+            - string
+            - "null"
+          maxLength: 64
+        legal_address:
+          type:
+            - string
+            - "null"
+          maxLength: 500
+    ClientWrite:
+      allOf:
+        - $ref: "#/components/schemas/ClientFields"
+      unevaluatedProperties: false
+    Client:
+      allOf:
+        - $ref: "#/components/schemas/ClientFields"
+        - type: object
+          required:
+            - id
+            - created_at
+          properties:
+            id:
+              $ref: "#/components/schemas/Id"
+            created_at:
+              $ref: "#/components/schemas/Timestamp"
+    ClientPage:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                allOf:
+                  - $ref: "#/components/schemas/Client"
+                  - type: object
+                    properties:
+                      devices_total:
+                        type: integer
+                        minimum: 0
+                      alerts_open:
+                        type: integer
+                        minimum: 0
+    ClientCard:
+      allOf:
+        - $ref: "#/components/schemas/Client"
+        - type: object
+          required:
+            - addresses
+            - contacts
+            - devices
+          properties:
+            addresses:
+              type: array
+              items:
+                $ref: "#/components/schemas/Address"
+            contacts:
+              type: array
+              items:
+                $ref: "#/components/schemas/Contact"
+            devices:
+              type: array
+              items:
+                $ref: "#/components/schemas/DeviceListItem"
+              description: "Все кулеры клиента: статусы, алерты, литры, фильтры (V-024)"
+    AddressFields:
+      type: object
+      required:
+        - address
+      properties:
+        address:
+          type: string
+          minLength: 1
+          maxLength: 500
+        region:
+          type:
+            - string
+            - "null"
+          maxLength: 120
+        lat:
+          type:
+            - number
+            - "null"
+          minimum: -90
+          maximum: 90
+        lng:
+          type:
+            - number
+            - "null"
+          minimum: -180
+          maximum: 180
+        coords_source:
+          enum:
+            - geocoded
+            - manual
+          description: Без координат — геокодирование на сервере
+        floor:
+          type:
+            - string
+            - "null"
+          maxLength: 32
+        place:
+          type:
+            - string
+            - "null"
+          maxLength: 500
+          description: Описание места установки (P-05)
+        access_note:
+          type:
+            - string
+            - "null"
+          maxLength: 1000
+    AddressWrite:
+      allOf:
+        - $ref: "#/components/schemas/AddressFields"
+      unevaluatedProperties: false
+    Address:
+      allOf:
+        - $ref: "#/components/schemas/AddressFields"
+        - type: object
+          required:
+            - id
+            - client_id
+          properties:
+            id:
+              $ref: "#/components/schemas/Id"
+            client_id:
+              $ref: "#/components/schemas/Id"
+    ContactFields:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          $ref: "#/components/schemas/PersonName"
+        phone:
+          oneOf:
+            - $ref: "#/components/schemas/Phone"
+            - type: "null"
+        email:
+          oneOf:
+            - $ref: "#/components/schemas/Email"
+            - type: "null"
+        role:
+          type:
+            - string
+            - "null"
+          maxLength: 120
+        comment:
+          type:
+            - string
+            - "null"
+          maxLength: 1000
+    ContactWrite:
+      allOf:
+        - $ref: "#/components/schemas/ContactFields"
+      unevaluatedProperties: false
+    Contact:
+      allOf:
+        - $ref: "#/components/schemas/ContactFields"
+        - type: object
+          required:
+            - id
+            - client_id
+          properties:
+            id:
+              $ref: "#/components/schemas/Id"
+            client_id:
+              $ref: "#/components/schemas/Id"
+    LifecycleStatus:
+      enum:
+        - stock
+        - active
+        - installed
+        - maintenance
+        - disabled
+        - decommissioned
+        - reassigned
+      description: склад, активно, установлено, обслуживание, отключено, списано, переназначено (V-013)
+    TechState:
+      enum:
+        - operational
+        - warning
+        - fault
+        - offline
+    Ownership:
+      enum:
+        - rent
+        - purchase
+    WaterSource:
+      enum:
+        - bottle_top
+        - bottle_bottom
+        - mains
+    DeviceModel:
+      type: object
+      required:
+        - water_source
+        - variant
+        - carbonated
+      properties:
+        water_source:
+          $ref: "#/components/schemas/WaterSource"
+        variant:
+          enum:
+            - A
+            - S
+        carbonated:
+          type: boolean
+        sku:
+          type:
+            - string
+            - "null"
+          maxLength: 64
+    DeviceCreate:
+      type: object
+      additionalProperties: false
+      required:
+        - device_id
+        - serial
+        - model
+      properties:
+        device_id:
+          type: string
+          pattern: ^[A-Za-z0-9._:-]{1,128}$
+          description: Device ID в IoT Hub
+        serial:
+          type: string
+          minLength: 1
+          maxLength: 64
+        imei:
+          type:
+            - string
+            - "null"
+          pattern: ^[0-9]{15}$
+        model:
+          $ref: "#/components/schemas/DeviceModel"
+        hw:
+          type:
+            - string
+            - "null"
+          maxLength: 64
+        ownership:
+          $ref: "#/components/schemas/Ownership"
+        description:
+          type:
+            - string
+            - "null"
+          maxLength: 1000
+    DeviceUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        serial:
+          type: string
+          minLength: 1
+          maxLength: 64
+        imei:
+          type:
+            - string
+            - "null"
+          pattern: ^[0-9]{15}$
+        model:
+          $ref: "#/components/schemas/DeviceModel"
+        hw:
+          type:
+            - string
+            - "null"
+          maxLength: 64
+        description:
+          type:
+            - string
+            - "null"
+          maxLength: 1000
+    Device:
+      type: object
+      required:
+        - id
+        - device_id
+        - serial
+        - model
+        - lifecycle
+        - state
+        - ownership
+        - online
+        - created_at
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        device_id:
+          type: string
+        serial:
+          type: string
+        imei:
+          type:
+            - string
+            - "null"
+        model:
+          $ref: "#/components/schemas/DeviceModel"
+        fw:
+          type:
+            - string
+            - "null"
+        hw:
+          type:
+            - string
+            - "null"
+        cert_thumbprint:
+          type:
+            - string
+            - "null"
+          description: Отпечаток действующего сертификата
+        lifecycle:
+          $ref: "#/components/schemas/LifecycleStatus"
+        state:
+          $ref: "#/components/schemas/TechState"
+        ownership:
+          $ref: "#/components/schemas/Ownership"
+        online:
+          type: boolean
+          description: "Есть heartbeat за порог офлайна (7.4: 3 мин)"
+        last_seen_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        offline_since:
+          type:
+            - string
+            - "null"
+          format: date-time
+        blocked:
+          type: boolean
+          description: Доступ в IoT Hub отозван
+        client_id:
+          type:
+            - string
+            - "null"
+          format: uuid
+        address_id:
+          type:
+            - string
+            - "null"
+          format: uuid
+        esim_profile_id:
+          type:
+            - string
+            - "null"
+          format: uuid
+        description:
+          type:
+            - string
+            - "null"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+    DeviceListItem:
+      allOf:
+        - $ref: "#/components/schemas/Device"
+        - type: object
+          properties:
+            client_name:
+              type:
+                - string
+                - "null"
+            address:
+              type:
+                - string
+                - "null"
+            floor:
+              type:
+                - string
+                - "null"
+            place:
+              type:
+                - string
+                - "null"
+            alerts_open:
+              type: integer
+              minimum: 0
+            filter_left_pct:
+              type:
+                - number
+                - "null"
+            liters_period:
+              type:
+                - number
+                - "null"
+              description: Литры за выбранный период
+    DevicePage:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/DeviceListItem"
+    DeviceCard:
+      allOf:
+        - $ref: "#/components/schemas/Device"
+        - type: object
+          properties:
+            client:
+              oneOf:
+                - $ref: "#/components/schemas/Client"
+                - type: "null"
+            address_detail:
+              oneOf:
+                - $ref: "#/components/schemas/Address"
+                - type: "null"
+            current:
+              oneOf:
+                - $ref: "#/components/schemas/DeviceState"
+                - type: "null"
+            filter:
+              $ref: "#/components/schemas/Filter"
+            alerts_open:
+              type: integer
+              minimum: 0
+            ota_allowed:
+              type:
+                - boolean
+                - "null"
+              description: По последнему hello
+    DeviceState:
+      type: object
+      description: Последний кадр 7.3 и время его приёма
+      required:
+        - ts
+        - received_at
+      properties:
+        ts:
+          $ref: "#/components/schemas/Timestamp"
+        received_at:
+          $ref: "#/components/schemas/Timestamp"
+        t_hot:
+          type:
+            - number
+            - "null"
+        t_cold:
+          type:
+            - number
+            - "null"
+        t_hot_set:
+          type:
+            - number
+            - "null"
+          description: Уставка контроллера, только чтение (P-04)
+        t_cold_set:
+          type:
+            - number
+            - "null"
+        heat_on:
+          type: boolean
+        cool_on:
+          type: boolean
+        heat_enabled:
+          type: boolean
+        cool_enabled:
+          type: boolean
+        power_on:
+          type: boolean
+        energy_saving:
+          type: boolean
+        water_total_l:
+          type: number
+        bottle_present:
+          type:
+            - boolean
+            - "null"
+        uvc_on:
+          type: boolean
+        co2_ok:
+          type:
+            - boolean
+            - "null"
+        past_state:
+          enum:
+            - idle
+            - running
+            - done
+            - error
+            - null
+        errors:
+          type: array
+          items:
+            type: string
+        rssi:
+          type: number
+        rsrp:
+          type: number
+        rsrq:
+          type: number
+        sinr:
+          type: number
+        operator:
+          type: string
+        roaming:
+          type: boolean
+        not_running_reason:
+          enum:
+            - power_off
+            - schedule
+            - holiday
+            - null
+          description: «Разрешено, сейчас не работает» — причина (7.3 п. 8)
+    DeviceTransfer:
+      type: object
+      additionalProperties: false
+      required:
+        - client_id
+        - address_id
+      properties:
+        client_id:
+          type:
+            - string
+            - "null"
+          format: uuid
+          description: null — снять с клиента (на склад)
+        address_id:
+          type:
+            - string
+            - "null"
+          format: uuid
+        comment:
+          type:
+            - string
+            - "null"
+          maxLength: 1000
+    LifecycleChange:
+      type: object
+      additionalProperties: false
+      required:
+        - lifecycle
+      properties:
+        lifecycle:
+          $ref: "#/components/schemas/LifecycleStatus"
+        comment:
+          type:
+            - string
+            - "null"
+          maxLength: 1000
+    OwnershipChange:
+      type: object
+      additionalProperties: false
+      required:
+        - ownership
+      properties:
+        ownership:
+          $ref: "#/components/schemas/Ownership"
+        comment:
+          type:
+            - string
+            - "null"
+          maxLength: 1000
+    DeviceHistoryEntry:
+      type: object
+      required:
+        - at
+        - by
+        - field
+        - before
+        - after
+      properties:
+        at:
+          $ref: "#/components/schemas/Timestamp"
+        by:
+          type:
+            - string
+            - "null"
+          format: uuid
+        field:
+          enum:
+            - client
+            - address
+            - lifecycle
+            - ownership
+        before: {}
+        after: {}
+        comment:
+          type:
+            - string
+            - "null"
+    DeviceHistoryPage:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/DeviceHistoryEntry"
+    CertificateJob:
+      type: object
+      required:
+        - status
+        - started_at
+      properties:
+        status:
+          enum:
+            - issuing
+            - registered
+            - failed
+        thumbprint:
+          type:
+            - string
+            - "null"
+        started_at:
+          $ref: "#/components/schemas/Timestamp"
+        error:
+          type:
+            - string
+            - "null"
+          description: Причина при failed
+    CertificateState:
+      type: object
+      required:
+        - current
+        - job
+      properties:
+        current:
+          oneOf:
+            - type: "null"
+            - type: object
+              required:
+                - thumbprint
+                - issued_at
+                - expires_at
+              properties:
+                thumbprint:
+                  type: string
+                issued_at:
+                  $ref: "#/components/schemas/Timestamp"
+                expires_at:
+                  $ref: "#/components/schemas/Timestamp"
+        job:
+          oneOf:
+            - $ref: "#/components/schemas/CertificateJob"
+            - type: "null"
+          description: Последний выпуск или ротация
+    TelemetrySeries:
+      type: object
+      required:
+        - resolution
+        - series
+      properties:
+        resolution:
+          $ref: "#/components/schemas/Resolution"
+        series:
+          type: object
+          description: Поле → точки; для агрегатов — среднее, минимум, максимум за шаг
+          additionalProperties:
+            type: array
+            items:
+              type: object
+              required:
+                - t
+              properties:
+                t:
+                  $ref: "#/components/schemas/Timestamp"
+                v:
+                  type:
+                    - number
+                    - "null"
+                min:
+                  type:
+                    - number
+                    - "null"
+                max:
+                  type:
+                    - number
+                    - "null"
+    DeviceEventType:
+      enum:
+        - error_raised
+        - error_cleared
+        - past_started
+        - past_finished
+        - bottle_removed
+        - bottle_installed
+        - reboot
+        - buffer_overflow
+        - schedule_applied
+        - controller_confirmed
+        - controller_not_confirmed
+        - counter_gap
+    DeviceEvent:
+      type: object
+      required:
+        - seq
+        - ts
+        - received_at
+        - type
+      properties:
+        seq:
+          type: integer
+        ts:
+          $ref: "#/components/schemas/Timestamp"
+        received_at:
+          $ref: "#/components/schemas/Timestamp"
+        type:
+          $ref: "#/components/schemas/DeviceEventType"
+        code:
+          type:
+            - string
+            - "null"
+        data:
+          type:
+            - object
+            - "null"
+    DeviceEventPage:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/DeviceEvent"
+    ErrorEntry:
+      type: object
+      required:
+        - code
+        - raised_at
+        - active
+      properties:
+        code:
+          type: string
+        description:
+          type:
+            - string
+            - "null"
+          description: Описание SIG из справочника RE-4
+        severity:
+          $ref: "#/components/schemas/Severity"
+        raised_at:
+          $ref: "#/components/schemas/Timestamp"
+        cleared_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        active:
+          type: boolean
+    ErrorEntryPage:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/ErrorEntry"
+    ErrorCode:
+      type: object
+      required:
+        - code
+        - description
+      properties:
+        code:
+          type: string
+          pattern: ^(B[1-3]|C[A-Za-z0-9_]{1,31})$
+        description:
+          type: string
+        severity:
+          $ref: "#/components/schemas/Severity"
+        action:
+          type:
+            - string
+            - "null"
+          description: Рекомендуемое действие
+    ErrorCodeList:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ErrorCode"
+    PastResult:
+      enum:
+        - ok
+        - error
+    PastInitiator:
+      enum:
+        - auto
+        - manual
+    Pasteurization:
+      type: object
+      required:
+        - device_id
+        - started_at
+        - initiator
+      properties:
+        device_id:
+          $ref: "#/components/schemas/Id"
+        started_at:
+          $ref: "#/components/schemas/Timestamp"
+        finished_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        result:
+          oneOf:
+            - $ref: "#/components/schemas/PastResult"
+            - type: "null"
+        error_code:
+          type:
+            - string
+            - "null"
+        initiator:
+          $ref: "#/components/schemas/PastInitiator"
+        user:
+          type:
+            - string
+            - "null"
+          description: Пользователь — если устройство его передаёт
+    PasteurizationPage:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/Pasteurization"
+    CommandStatus:
+      enum:
+        - pending
+        - sent
+        - ack
+        - success
+        - error
+        - expired
+    Command:
+      type: object
+      required:
+        - id
+        - device_id
+        - op
+        - param
+        - status
+        - created_at
+        - deadline_at
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        cmd_id:
+          type: string
+          description: "`cmd_id` в MQTT (7.3)"
+        device_id:
+          $ref: "#/components/schemas/Id"
+        op:
+          enum:
+            - GET
+            - POST
+        param:
+          type: string
+          description: Имя команды прошивки (7.3)
+        value:
+          type:
+            - string
+            - "null"
+        status:
+          $ref: "#/components/schemas/CommandStatus"
+        initiator_id:
+          type:
+            - string
+            - "null"
+          format: uuid
+          description: null — платформа (например, отправка расписания)
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        deadline_at:
+          $ref: "#/components/schemas/Timestamp"
+        status_times:
+          type: object
+          description: Время каждого статуса
+          additionalProperties:
+            $ref: "#/components/schemas/Timestamp"
+        result:
+          type:
+            - object
+            - "null"
+          description: Результат устройства (7.3) — `code`, `value`, `applied`, `checks`
+          properties:
+            code:
+              enum:
+                - 200
+                - 400
+            value:
+              type: string
+            message:
+              type: string
+            applied:
+              enum:
+                - pushed
+                - flag_only
+            checks:
+              type: object
+              additionalProperties:
+                enum:
+                  - ok
+                  - fail
+        expired_reason:
+          enum:
+            - deadline
+            - offline_wait
+            - superseded
+            - null
+          description: Срок; не дождались связи 10 мин; заменена новой командой (7.3 п. 1)
+        late_result:
+          type: boolean
+          description: Результат пришёл после expired (п. 4)
+        controller_confirmed_ms:
+          type:
+            - integer
+            - "null"
+          description: "`uart_ms` подтверждения контроллером (п. 8)"
+        controller_confirmed:
+          type:
+            - boolean
+            - "null"
+    CommandPage:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/Command"
+    EuCommand:
+      type: object
+      description: Команда для End User — без payload и технических полей (7.5)
+      required:
+        - id
+        - action
+        - status
+        - created_at
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        action:
+          enum:
+            - refresh
+            - heating
+            - cooling
+            - power
+            - energy_saving
+            - filter_reset
+            - schedule
+        status:
+          $ref: "#/components/schemas/CommandStatus"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        outcome:
+          enum:
+            - done
+            - done_not_running
+            - failed
+            - timeout
+            - null
+          description: "Итог для экрана: выполнено; разрешено, но сейчас не работает (flag_only); ошибка; нет ответа"
+    HHMM:
+      type: string
+      pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+    ScheduleFields:
+      type: object
+      required:
+        - windows
+        - holidays
+      description: "Сервер проверяет: одно окно на день, начало < конца, до 33 выходных; строку autopowerscheduling собирает
+        сам (7.3)"
+      properties:
+        timezone:
+          type: string
+          description: IANA; по умолчанию — часовой пояс адреса, `Europe/Riga`
+        windows:
+          type: array
+          maxItems: 7
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - day
+              - from
+              - to
+            properties:
+              day:
+                type: integer
+                minimum: 1
+                maximum: 7
+                description: 1 — понедельник
+              from:
+                $ref: "#/components/schemas/HHMM"
+              to:
+                $ref: "#/components/schemas/HHMM"
+        holidays:
+          type: array
+          maxItems: 33
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - start
+              - end
+            properties:
+              start:
+                $ref: "#/components/schemas/Timestamp"
+              end:
+                $ref: "#/components/schemas/Timestamp"
+    ScheduleWrite:
+      allOf:
+        - $ref: "#/components/schemas/ScheduleFields"
+      unevaluatedProperties: false
+    ScheduleVersion:
+      allOf:
+        - $ref: "#/components/schemas/ScheduleFields"
+        - type: object
+          required:
+            - version
+            - created_at
+            - source
+          properties:
+            version:
+              type: integer
+              minimum: 1
+            created_at:
+              $ref: "#/components/schemas/Timestamp"
+            created_by:
+              type:
+                - string
+                - "null"
+              format: uuid
+            source:
+              enum:
+                - platform
+                - local
+              description: local — изменено на месте и сохранено платформой
+    ScheduleState:
+      type: object
+      required:
+        - current
+        - delivery
+      properties:
+        current:
+          oneOf:
+            - $ref: "#/components/schemas/ScheduleVersion"
+            - type: "null"
+        delivery:
+          enum:
+            - applied
+            - pending
+            - failed
+          description: «Применено на устройстве / ожидает» — по номеру версии с устройства
+        device_version:
+          type:
+            - string
+            - "null"
+          description: Версия на устройстве (номер или local:<время>)
+        energy_saving:
+          type:
+            - boolean
+            - "null"
+          description: Без энергосбережения расписание не действует
+    ScheduleVersionPage:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/ScheduleVersion"
+    Consumption:
+      type: object
+      required:
+        - from
+        - to
+        - bucket
+        - total_l
+        - points
+        - source
+      properties:
+        from:
+          $ref: "#/components/schemas/Timestamp"
+        to:
+          $ref: "#/components/schemas/Timestamp"
+        bucket:
+          $ref: "#/components/schemas/Bucket"
+        total_l:
+          type: number
+          minimum: 0
+          description: Разница счётчика на концах периода (7.2)
+        since_reset_l:
+          type:
+            - number
+            - "null"
+          description: Потреблено с последнего сброса
+        last_reset_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        source:
+          enum:
+            - dispense
+            - bottle_steps
+            - none
+          description: "Источник счётчика по модели (7.2): выдача WCS, шаги по бутыли, нет источника"
+        points:
+          type: array
+          items:
+            type: object
+            required:
+              - t
+              - liters
+            properties:
+              t:
+                $ref: "#/components/schemas/Timestamp"
+              liters:
+                type: number
+                minimum: 0
+    ConsumptionReset:
+      type: object
+      required:
+        - id
+        - at
+        - by
+        - water_total_l
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        at:
+          $ref: "#/components/schemas/Timestamp"
+        by:
+          $ref: "#/components/schemas/Id"
+        water_total_l:
+          type: number
+          description: Точка отсчёта
+    ResetKind:
+      enum:
+        - consumption
+        - filter
+    Reset:
+      type: object
+      required:
+        - id
+        - kind
+        - at
+        - by
+        - by_role
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        kind:
+          $ref: "#/components/schemas/ResetKind"
+        at:
+          $ref: "#/components/schemas/Timestamp"
+        by:
+          $ref: "#/components/schemas/Id"
+        by_name:
+          type: string
+        by_role:
+          $ref: "#/components/schemas/Role"
+        water_total_l:
+          type:
+            - number
+            - "null"
+          description: Значение счётчика в момент сброса (7.2)
+        command_id:
+          type:
+            - string
+            - "null"
+          format: uuid
+          description: Команда `POST filterreset:1` — для замены фильтра
+    ResetPage:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/Reset"
+    Filter:
+      type: object
+      required:
+        - installed_at
+        - nominal_l
+        - used_l
+        - left_pct
+      properties:
+        installed_at:
+          $ref: "#/components/schemas/Timestamp"
+        installed_by:
+          type:
+            - string
+            - "null"
+          format: uuid
+        nominal_l:
+          type: number
+          minimum: 0
+          description: Номинальный ресурс картриджа по модели
+        used_l:
+          type: number
+          minimum: 0
+        left_pct:
+          $ref: "#/components/schemas/Percent"
+        forecast_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+          description: Прогноз исчерпания по среднему суточному расходу за 30 дней
+        replace_by:
+          type:
+            - string
+            - "null"
+          format: date-time
+          description: Дата замены по сроку
+        level:
+          enum:
+            - ok
+            - warning
+            - critical
+          description: ≤ 20 % — предупреждение, ≤ 5 % или срок прошёл — критично (7.4)
+    FilterReset:
+      type: object
+      required:
+        - filter
+        - command_id
+      properties:
+        filter:
+          $ref: "#/components/schemas/Filter"
+        command_id:
+          $ref: "#/components/schemas/Id"
+    FilterPage:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                allOf:
+                  - $ref: "#/components/schemas/Filter"
+                  - type: object
+                    required:
+                      - device_id
+                    properties:
+                      device_id:
+                        $ref: "#/components/schemas/Id"
+                      client_name:
+                        type:
+                          - string
+                          - "null"
+                      address:
+                        type:
+                          - string
+                          - "null"
+    AlertType:
+      enum:
+        - offline
+        - filter_low
+        - filter_expired
+        - error_code
+        - temperature
+        - no_water
+        - pasteurization
+    AlertStatus:
+      enum:
+        - open
+        - acknowledged
+        - recovered
+        - closed
+    Severity:
+      enum:
+        - info
+        - warning
+        - critical
+    Alert:
+      type: object
+      required:
+        - id
+        - device_id
+        - type
+        - severity
+        - status
+        - opened_at
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        device_id:
+          $ref: "#/components/schemas/Id"
+        client_id:
+          type:
+            - string
+            - "null"
+          format: uuid
+        type:
+          $ref: "#/components/schemas/AlertType"
+        severity:
+          $ref: "#/components/schemas/Severity"
+        status:
+          $ref: "#/components/schemas/AlertStatus"
+        code:
+          type:
+            - string
+            - "null"
+          description: Код ошибки — для error_code
+        details:
+          type:
+            - object
+            - "null"
+        assignee_id:
+          type:
+            - string
+            - "null"
+          format: uuid
+        opened_at:
+          $ref: "#/components/schemas/Timestamp"
+        acknowledged_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        recovered_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        closed_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+    AlertPage:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/Alert"
+    AlertAssign:
+      type: object
+      additionalProperties: false
+      required:
+        - assignee_id
+      properties:
+        assignee_id:
+          type:
+            - string
+            - "null"
+          format: uuid
+          description: null — снять назначение
+    AlertClose:
+      type: object
+      additionalProperties: false
+      properties:
+        comment:
+          type:
+            - string
+            - "null"
+          maxLength: 1000
+    Notification:
+      type: object
+      required:
+        - id
+        - at
+        - kind
+        - read
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        at:
+          $ref: "#/components/schemas/Timestamp"
+        kind:
+          enum:
+            - alert_opened
+            - alert_assigned
+            - command_failed
+        alert_id:
+          type:
+            - string
+            - "null"
+          format: uuid
+        device_id:
+          type:
+            - string
+            - "null"
+          format: uuid
+        text:
+          type: string
+        read:
+          type: boolean
+    NotificationPage:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          required:
+            - unread
+          properties:
+            unread:
+              type: integer
+              minimum: 0
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/Notification"
+    NotificationsRead:
+      type: object
+      additionalProperties: false
+      properties:
+        ids:
+          type: array
+          items:
+            $ref: "#/components/schemas/Id"
+          maxItems: 500
+        all:
+          type: boolean
+    Dashboard:
+      type: object
+      required:
+        - devices_total
+        - online
+        - offline
+        - offline_pct
+        - alerts_by_type
+        - liters_total
+        - filters
+        - problem_devices
+      properties:
+        devices_total:
+          type: integer
+          minimum: 0
+        online:
+          type: integer
+          minimum: 0
+        offline:
+          type: integer
+          minimum: 0
+        offline_pct:
+          $ref: "#/components/schemas/Percent"
+        alerts_by_type:
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 0
+        liters_total:
+          type: number
+          minimum: 0
+          description: Общий объём за период по парку (P-02)
+        filters:
+          type: object
+          required:
+            - warning
+            - critical
+          properties:
+            warning:
+              type: integer
+            critical:
+              type: integer
+        problem_devices:
+          type: array
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/DeviceListItem"
+    MapView:
+      type: object
+      required:
+        - clusters
+        - devices
+      properties:
+        clusters:
+          type: array
+          items:
+            type: object
+            required:
+              - lat
+              - lng
+              - count
+              - by_color
+            properties:
+              lat:
+                type: number
+              lng:
+                type: number
+              count:
+                type: integer
+                minimum: 2
+              by_color:
+                type: object
+                additionalProperties:
+                  type: integer
+        devices:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - lat
+              - lng
+              - color
+            properties:
+              id:
+                $ref: "#/components/schemas/Id"
+              lat:
+                type: number
+              lng:
+                type: number
+              color:
+                enum:
+                  - green
+                  - grey
+                  - red
+                  - yellow
+                description: online, offline, алерт, предупреждение (V-025)
+              client_name:
+                type:
+                  - string
+                  - "null"
+              address:
+                type:
+                  - string
+                  - "null"
+              floor:
+                type:
+                  - string
+                  - "null"
+              place:
+                type:
+                  - string
+                  - "null"
+              filter_left_pct:
+                type:
+                  - number
+                  - "null"
+              alerts_open:
+                type: integer
+    ConsumptionReport:
+      type: object
+      required:
+        - from
+        - to
+        - bucket
+        - group_by
+        - rows
+      properties:
+        from:
+          $ref: "#/components/schemas/Timestamp"
+        to:
+          $ref: "#/components/schemas/Timestamp"
+        bucket:
+          $ref: "#/components/schemas/Bucket"
+        group_by:
+          $ref: "#/components/schemas/GroupBy"
+        rows:
+          type: array
+          items:
+            type: object
+            required:
+              - key
+              - label
+              - total_l
+              - points
+            properties:
+              key:
+                type: string
+              label:
+                type: string
+              total_l:
+                type: number
+              points:
+                type: array
+                items:
+                  type: object
+                  required:
+                    - t
+                    - liters
+                  properties:
+                    t:
+                      $ref: "#/components/schemas/Timestamp"
+                    liters:
+                      type: number
+    RankingReport:
+      type: object
+      required:
+        - rows
+      properties:
+        rows:
+          type: array
+          items:
+            type: object
+            required:
+              - device_id
+              - liters
+            properties:
+              device_id:
+                $ref: "#/components/schemas/Id"
+              serial:
+                type: string
+              client_name:
+                type:
+                  - string
+                  - "null"
+              liters:
+                type: number
+    EsimStatus:
+      enum:
+        - inventory
+        - active
+        - suspended
+        - closed
+    EsimProfileFields:
+      type: object
+      required:
+        - iccid
+      properties:
+        iccid:
+          type: string
+          pattern: ^[0-9]{18,22}$
+        eid:
+          type:
+            - string
+            - "null"
+          pattern: ^[0-9]{32}$
+        imsi:
+          type:
+            - string
+            - "null"
+          pattern: ^[0-9]{6,15}$
+        msisdn:
+          type:
+            - string
+            - "null"
+          pattern: ^\+?[0-9]{6,15}$
+        imei:
+          type:
+            - string
+            - "null"
+          pattern: ^[0-9]{15}$
+        apn:
+          type:
+            - string
+            - "null"
+          maxLength: 100
+        carrier:
+          type:
+            - string
+            - "null"
+          maxLength: 100
+        tariff:
+          type:
+            - string
+            - "null"
+          maxLength: 100
+        traffic_limit_mb:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+        contract_until:
+          type:
+            - string
+            - "null"
+          format: date
+    EsimProfileWrite:
+      allOf:
+        - $ref: "#/components/schemas/EsimProfileFields"
+      unevaluatedProperties: false
+    EsimProfile:
+      allOf:
+        - $ref: "#/components/schemas/EsimProfileFields"
+        - type: object
+          required:
+            - id
+            - status
+          properties:
+            id:
+              $ref: "#/components/schemas/Id"
+            status:
+              $ref: "#/components/schemas/EsimStatus"
+            device_id:
+              type:
+                - string
+                - "null"
+              format: uuid
+            operations:
+              type: array
+              items:
+                $ref: "#/components/schemas/EsimOperation"
+    EsimProfilePage:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/EsimProfile"
+    EsimBind:
+      type: object
+      additionalProperties: false
+      required:
+        - device_id
+      properties:
+        device_id:
+          $ref: "#/components/schemas/Id"
+    EsimOperationCreate:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+      properties:
+        type:
+          enum:
+            - activate
+            - suspend
+            - resume
+            - close
+        comment:
+          type:
+            - string
+            - "null"
+          maxLength: 1000
+    EsimOperationConfirm:
+      type: object
+      additionalProperties: false
+      required:
+        - provider_ticket
+        - provider_date
+      properties:
+        provider_ticket:
+          type: string
+          minLength: 1
+          maxLength: 100
+        provider_date:
+          type: string
+          format: date
+        comment:
+          type:
+            - string
+            - "null"
+          maxLength: 1000
+    EsimOperation:
+      type: object
+      required:
+        - id
+        - profile_id
+        - type
+        - status
+        - created_at
+        - created_by
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        profile_id:
+          $ref: "#/components/schemas/Id"
+        type:
+          enum:
+            - activate
+            - suspend
+            - resume
+            - close
+        status:
+          enum:
+            - requested
+            - confirmed
+            - verified
+            - failed
+          description: verified — подтверждено связью устройства (online/offline), C-015
+        provider_ticket:
+          type:
+            - string
+            - "null"
+        provider_date:
+          type:
+            - string
+            - "null"
+          format: date
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        created_by:
+          $ref: "#/components/schemas/Id"
+        confirmed_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        confirmed_by:
+          type:
+            - string
+            - "null"
+          format: uuid
+    SettingValue:
+      type: object
+      required:
+        - value
+        - level
+      properties:
+        value:
+          type: number
+        level:
+          enum:
+            - platform
+            - tenant
+            - device
+          description: "Откуда значение: платформа → арендатор → устройство (7.2)"
+    Settings:
+      type: object
+      description: "Действующие значения 7.4 и уровень, откуда каждое. Интервалы кадра и heartbeat (5 мин / 60 с) и сроки
+        команд — постоянные Stage 1: в 7.3 нет команды, задающей их устройству."
+      additionalProperties: false
+      required:
+        - offline_after_min
+        - offline_alert_after_min
+        - hot_alert_below_set_c
+        - hot_alert_above_c
+        - hot_alert_after_min
+        - cold_alert_above_set_c
+        - cold_alert_below_c
+        - cold_alert_after_min
+        - filter_warning_pct
+        - filter_critical_pct
+        - upcoming_filters_days
+        - filter_forecast_window_days
+      properties:
+        offline_after_min:
+          $ref: "#/components/schemas/SettingValue"
+        offline_alert_after_min:
+          $ref: "#/components/schemas/SettingValue"
+        hot_alert_below_set_c:
+          $ref: "#/components/schemas/SettingValue"
+        hot_alert_above_c:
+          $ref: "#/components/schemas/SettingValue"
+        hot_alert_after_min:
+          $ref: "#/components/schemas/SettingValue"
+        cold_alert_above_set_c:
+          $ref: "#/components/schemas/SettingValue"
+        cold_alert_below_c:
+          $ref: "#/components/schemas/SettingValue"
+        cold_alert_after_min:
+          $ref: "#/components/schemas/SettingValue"
+        filter_warning_pct:
+          $ref: "#/components/schemas/SettingValue"
+        filter_critical_pct:
+          $ref: "#/components/schemas/SettingValue"
+        upcoming_filters_days:
+          $ref: "#/components/schemas/SettingValue"
+        filter_forecast_window_days:
+          $ref: "#/components/schemas/SettingValue"
+    SettingsWrite:
+      type: object
+      description: Изменить на своём уровне; `null` — вернуть унаследованное значение
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        offline_after_min:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+          maximum: 60
+          description: "Устройство offline: нет heartbeat N мин; по умолчанию 3"
+        offline_alert_after_min:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+          maximum: 1440
+          description: Алерт «офлайн» (варианты 15, 30, 60, свой); по умолчанию 15
+        hot_alert_below_set_c:
+          type:
+            - number
+            - "null"
+          minimum: 1
+          maximum: 50
+          description: "Горячая: алерт, если ниже уставки больше чем на N °C; по умолчанию 10"
+        hot_alert_above_c:
+          type:
+            - number
+            - "null"
+          minimum: 90
+          maximum: 110
+          description: "Горячая: алерт выше N °C; по умолчанию 99"
+        hot_alert_after_min:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+          maximum: 240
+          description: "Горячая: дольше N мин при включённом нагреве; по умолчанию 10"
+        cold_alert_above_set_c:
+          type:
+            - number
+            - "null"
+          minimum: 1
+          maximum: 30
+          description: "Холодная: алерт, если выше уставки больше чем на N °C; по умолчанию 5"
+        cold_alert_below_c:
+          type:
+            - number
+            - "null"
+          minimum: -5
+          maximum: 10
+          description: "Холодная: алерт ниже N °C; по умолчанию 1"
+        cold_alert_after_min:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+          maximum: 240
+          description: "Холодная: дольше N мин при включённом охлаждении; по умолчанию 15"
+        filter_warning_pct:
+          type:
+            - number
+            - "null"
+          minimum: 0
+          maximum: 100
+          description: "Фильтр: предупреждение при остатке ≤ N %; по умолчанию 20"
+        filter_critical_pct:
+          type:
+            - number
+            - "null"
+          minimum: 0
+          maximum: 100
+          description: "Фильтр: критично при остатке ≤ N % (или прошла дата замены); по умолчанию 5"
+        upcoming_filters_days:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+          maximum: 366
+          description: "Список ближайших замен: N дней (варианты 7, 30, 90, свой); по умолчанию 30"
+        filter_forecast_window_days:
+          type:
+            - integer
+            - "null"
+          minimum: 7
+          maximum: 365
+          description: "Прогноз фильтра: средний суточный расход за N дней; по умолчанию 30"
+    AuditEntry:
+      type: object
+      required:
+        - id
+        - at
+        - action
+        - object_type
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        at:
+          $ref: "#/components/schemas/Timestamp"
+        user_id:
+          type:
+            - string
+            - "null"
+          format: uuid
+          description: null — платформа или устройство
+        action:
+          type: string
+          description: "Например: login, user.block, device.transfer, command.create, esim.operation.confirm"
+        object_type:
+          type: string
+        object_id:
+          type:
+            - string
+            - "null"
+        before: {}
+        after: {}
+        ip:
+          type:
+            - string
+            - "null"
+    AuditPage:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/AuditEntry"
+    EuClientList:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - name
+            properties:
+              id:
+                $ref: "#/components/schemas/Id"
+              name:
+                type: string
+    EuStatus:
+      enum:
+        - working
+        - no_connection
+        - filter_replace
+      description: работает / нет связи / нужна замена фильтра (7.5)
+    EuDeviceListItem:
+      type: object
+      required:
+        - id
+        - client_id
+        - status
+        - filter_left_pct
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        client_id:
+          $ref: "#/components/schemas/Id"
+        address:
+          type:
+            - string
+            - "null"
+        floor:
+          type:
+            - string
+            - "null"
+        place:
+          type:
+            - string
+            - "null"
+        status:
+          $ref: "#/components/schemas/EuStatus"
+        filter_left_pct:
+          type:
+            - number
+            - "null"
+    EuDeviceList:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/EuDeviceListItem"
+    EuDevice:
+      allOf:
+        - $ref: "#/components/schemas/EuDeviceListItem"
+        - type: object
+          description: Без журналов команд и ошибок, eSIM и технических параметров (7.5)
+          properties:
+            heat_on:
+              type:
+                - boolean
+                - "null"
+            cool_on:
+              type:
+                - boolean
+                - "null"
+            heat_enabled:
+              type:
+                - boolean
+                - "null"
+            cool_enabled:
+              type:
+                - boolean
+                - "null"
+            power_on:
+              type:
+                - boolean
+                - "null"
+            energy_saving:
+              type:
+                - boolean
+                - "null"
+            not_running_reason:
+              enum:
+                - power_off
+                - schedule
+                - holiday
+                - null
+            consumption_month_l:
+              type:
+                - number
+                - "null"
+            since_reset_l:
+              type:
+                - number
+                - "null"
+            last_reset_at:
+              type:
+                - string
+                - "null"
+              format: date-time
+    EuAlertList:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - device_id
+              - type
+              - opened_at
+            properties:
+              id:
+                $ref: "#/components/schemas/Id"
+              device_id:
+                $ref: "#/components/schemas/Id"
+              type:
+                enum:
+                  - offline
+                  - filter_low
+                  - filter_expired
+              opened_at:
+                $ref: "#/components/schemas/Timestamp"
