@@ -2,5 +2,20 @@
   "name": "@icooler/simulator",
   "version": "0.0.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "start": "node src/cli.ts",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "node --test 'test/**/*.test.ts'"
+  },
+  "dependencies": {
+    "mqtt": "5.16.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.4",
+    "aedes": "1.2.0",
+    "ajv": "8.17.1",
+    "ajv-formats": "3.0.1",
+    "typescript": "5.9.3"
+  }
 }
