@@ -1,0 +1,37 @@
+{
+  "$comment": "Интерфейс схемы app для дорожки «Устройство» (ТЗ Stage 1 §6.3). Реализует и ведёт Платформа — миграция services/api/drizzle/0001_contract.sql; тест services/api/test/db.test.ts сверяет базу с этим файлом. Роль служб Устройства — app_device: только эти представления и функции.",
+  "role": "app_device",
+  "views": {
+    "v_device": {
+      "$comment": "Устройство → арендатор, клиент, модель; удалённые не видны. blocked — доступ в IoT Hub отозван.",
+      "columns": {
+        "device_id": "text", "device_uuid": "uuid", "tenant_id": "uuid", "client_id": "uuid", "address_id": "uuid",
+        "water_source": "app.water_source", "variant": "app.variant", "carbonated": "boolean",
+        "lifecycle": "app.lifecycle", "blocked": "boolean"
+      }
+    },
+    "v_device_schedule": {
+      "$comment": "Действующее расписание с версией и часовым поясом: наибольший changed_at, при равенстве — наибольший номер. content — строка autopowerscheduling; source local — изменено на месте.",
+      "columns": {
+        "device_id": "text", "version": "integer", "timezone": "text", "content": "text",
+        "source": "app.schedule_source", "local_version": "text", "changed_at": "timestamp with time zone"
+      }
+    },
+    "v_device_setting": {
+      "$comment": "Действующие настройки устройства (устройство → арендатор → платформа), в том числе ota_allowed и timezone; level — откуда значение.",
+      "columns": { "device_id": "text", "key": "text", "value": "jsonb", "level": "text" }
+    }
+  },
+  "functions": {
+    "audit_append": {
+      "$comment": "Запись аудита. p_actor — provisioning, dispatcher, ingest или jobs-telemetry; p_action — вида object.verb (certificate.rotate, command.retry). Возвращает id записи.",
+      "arguments": "p_tenant_id uuid, p_actor text, p_action text, p_object_type text, p_object_id text, p_before jsonb DEFAULT NULL::jsonb, p_after jsonb DEFAULT NULL::jsonb",
+      "returns": "uuid"
+    },
+    "schedule_store_local": {
+      "$comment": "По событию schedule_applied с источником local (ingest): сохраняет расписание новой версией с отметкой «изменено на месте» и аудитом; повтор с тем же p_local_version новой версии не создаёт. Возвращает номер действующей версии: локальная — dispatcher шлёт schedversion; действует более позднее изменение платформы — вся последовательность расписания.",
+      "arguments": "p_device_id text, p_content text, p_local_version text, p_changed_at timestamp with time zone, p_timezone text DEFAULT NULL::text",
+      "returns": "integer"
+    }
+  }
+}
