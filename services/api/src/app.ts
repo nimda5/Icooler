@@ -15,8 +15,9 @@ import { AuthController } from './modules/auth.controller.ts';
 import { UsersController } from './modules/users.controller.ts';
 import { TenantsController } from './modules/tenants.controller.ts';
 import { AuditController } from './modules/audit.controller.ts';
+import { SettingsController } from './modules/settings.controller.ts';
 
-export const CONTROLLERS = [AuthController, UsersController, TenantsController, AuditController];
+export const CONTROLLERS = [AuthController, UsersController, TenantsController, AuditController, SettingsController];
 
 @Module({})
 class AppModule {
