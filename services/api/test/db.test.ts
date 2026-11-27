@@ -5,7 +5,9 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
+import { join } from 'node:path';
 import { migrateDb } from '../src/db/migrate.ts';
+import { repoRoot } from '../src/paths.ts';
 
 const ADMIN_URL = process.env['DATABASE_URL'];
 if (!ADMIN_URL) throw new Error('DATABASE_URL не задан — см. services/api/README.md');
@@ -82,6 +84,18 @@ test('миграции с нуля: схема app, RLS у каждой табл
     } else {
       assert.ok(['auth_session', 'auth_token', 'error_code', 'setting_default'].includes(r.relname), `${r.relname}: без tenant_id и не в списке исключений`);
     }
+  }
+});
+
+test('время событий — в колонках по смыслу, а не в created_at', async () => {
+  const want: Record<string, string> = {
+    role_assignment: 'assigned_at', end_user_access: 'bound_at', device_history: 'at', consumption_reset: 'at',
+    filter_install: 'installed_at', schedule_local_report: 'received_at', setting: 'updated_at', audit_log: 'at', notification: 'at',
+  };
+  for (const [t, col] of Object.entries(want)) {
+    const cols = (await owner(`select column_name from information_schema.columns where table_schema = 'app' and table_name = $1`, [t])).rows.map((r) => r.column_name);
+    assert.ok(cols.includes(col), `${t}: нет ${col}`);
+    assert.ok(!cols.includes('created_at'), `${t}: лишняя created_at`);
   }
 });
 
@@ -421,7 +435,7 @@ test('schedule_store_local: неизвестное устройство и не�
 });
 
 test('контракт contracts/db/app-interface.json совпадает с базой, прочих прав у app_device нет', async () => {
-  const spec = JSON.parse(readFileSync(new URL('../../../contracts/db/app-interface.json', import.meta.url), 'utf8'));
+  const spec = JSON.parse(readFileSync(join(repoRoot(), 'contracts/db/app-interface.json'), 'utf8'));
   const cols = (await owner(`
     select c.relname as v, a.attname as col, format_type(a.atttypid, a.atttypmod) as type
     from pg_attribute a join pg_class c on c.oid = a.attrelid join pg_namespace n on n.oid = c.relnamespace

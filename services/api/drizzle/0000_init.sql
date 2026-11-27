@@ -55,7 +55,7 @@ CREATE TABLE "app"."app_user" (
 CREATE TABLE "app"."audit_log" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"tenant_id" uuid,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"at" timestamp with time zone DEFAULT now() NOT NULL,
 	"user_id" uuid,
 	"actor" text NOT NULL,
 	"action" text NOT NULL,
@@ -104,7 +104,7 @@ CREATE TABLE "app"."consumption_reset" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"tenant_id" uuid NOT NULL,
 	"device_id" uuid NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"at" timestamp with time zone DEFAULT now() NOT NULL,
 	"by" uuid NOT NULL,
 	"water_total_l" numeric(14, 3) NOT NULL
 );
@@ -153,7 +153,7 @@ CREATE TABLE "app"."device_history" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"tenant_id" uuid NOT NULL,
 	"device_id" uuid NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"at" timestamp with time zone DEFAULT now() NOT NULL,
 	"by" uuid,
 	"field" "app"."history_field" NOT NULL,
 	"before" jsonb,
@@ -166,7 +166,7 @@ CREATE TABLE "app"."end_user_access" (
 	"tenant_id" uuid NOT NULL,
 	"user_id" uuid NOT NULL,
 	"client_id" uuid NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"bound_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"bound_by" uuid NOT NULL,
 	"deleted_at" timestamp with time zone
 );
@@ -220,7 +220,7 @@ CREATE TABLE "app"."filter_install" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"tenant_id" uuid NOT NULL,
 	"device_id" uuid NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"installed_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"installed_by" uuid,
 	"nominal_l" numeric(10, 1) NOT NULL,
 	"water_total_l" numeric(14, 3) NOT NULL,
@@ -232,7 +232,7 @@ CREATE TABLE "app"."notification" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"tenant_id" uuid NOT NULL,
 	"user_id" uuid NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"at" timestamp with time zone DEFAULT now() NOT NULL,
 	"kind" text NOT NULL,
 	"alert_id" uuid,
 	"device_id" uuid,
@@ -245,7 +245,7 @@ CREATE TABLE "app"."role_assignment" (
 	"tenant_id" uuid,
 	"role" "app"."role" NOT NULL,
 	"assigned_by" uuid,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"assigned_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "role_assignment_sig_ck" CHECK (("app"."role_assignment"."role" = 'sig_admin') = ("app"."role_assignment"."tenant_id" is null))
 );
 --> statement-breakpoint
@@ -254,7 +254,7 @@ CREATE TABLE "app"."schedule_local_report" (
 	"device_id" uuid NOT NULL,
 	"local_version" text NOT NULL,
 	"version" integer NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"received_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "schedule_local_report_pk" PRIMARY KEY("device_id","local_version")
 );
 --> statement-breakpoint
@@ -282,7 +282,7 @@ CREATE TABLE "app"."setting" (
 	"key" text NOT NULL,
 	"value" jsonb NOT NULL,
 	"updated_by" uuid,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "setting_value_ck" CHECK ("app"."setting"."value" <> 'null'::jsonb)
 );
 --> statement-breakpoint
@@ -356,22 +356,22 @@ ALTER TABLE "app"."setting" ADD CONSTRAINT "setting_by_fk" FOREIGN KEY ("tenant_
 CREATE INDEX "address_client_ix" ON "app"."address" USING btree ("client_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "app_user_email_uq" ON "app"."app_user" USING btree (lower("email")) WHERE "app"."app_user"."deleted_at" is null;--> statement-breakpoint
 CREATE INDEX "app_user_tenant_ix" ON "app"."app_user" USING btree ("tenant_id");--> statement-breakpoint
-CREATE INDEX "audit_log_tenant_at_ix" ON "app"."audit_log" USING btree ("tenant_id","created_at");--> statement-breakpoint
+CREATE INDEX "audit_log_tenant_at_ix" ON "app"."audit_log" USING btree ("tenant_id","at");--> statement-breakpoint
 CREATE INDEX "auth_session_user_ix" ON "app"."auth_session" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "client_tenant_ix" ON "app"."client" USING btree ("tenant_id");--> statement-breakpoint
-CREATE INDEX "consumption_reset_device_ix" ON "app"."consumption_reset" USING btree ("device_id","created_at");--> statement-breakpoint
+CREATE INDEX "consumption_reset_device_ix" ON "app"."consumption_reset" USING btree ("device_id","at");--> statement-breakpoint
 CREATE INDEX "contact_client_ix" ON "app"."contact" USING btree ("client_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "device_device_id_uq" ON "app"."device" USING btree ("device_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "device_serial_uq" ON "app"."device" USING btree ("tenant_id","serial") WHERE "app"."device"."deleted_at" is null;--> statement-breakpoint
 CREATE UNIQUE INDEX "device_imei_uq" ON "app"."device" USING btree ("imei") WHERE "app"."device"."deleted_at" is null and "app"."device"."imei" is not null;--> statement-breakpoint
 CREATE UNIQUE INDEX "device_esim_uq" ON "app"."device" USING btree ("esim_profile_id") WHERE "app"."device"."deleted_at" is null and "app"."device"."esim_profile_id" is not null;--> statement-breakpoint
 CREATE INDEX "device_client_ix" ON "app"."device" USING btree ("client_id");--> statement-breakpoint
-CREATE INDEX "device_history_device_ix" ON "app"."device_history" USING btree ("device_id","created_at");--> statement-breakpoint
+CREATE INDEX "device_history_device_ix" ON "app"."device_history" USING btree ("device_id","at");--> statement-breakpoint
 CREATE UNIQUE INDEX "end_user_access_uq" ON "app"."end_user_access" USING btree ("user_id","client_id") WHERE "app"."end_user_access"."deleted_at" is null;--> statement-breakpoint
 CREATE INDEX "esim_operation_profile_ix" ON "app"."esim_operation" USING btree ("profile_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "esim_profile_iccid_uq" ON "app"."esim_profile" USING btree ("iccid") WHERE "app"."esim_profile"."deleted_at" is null;--> statement-breakpoint
-CREATE INDEX "filter_install_device_ix" ON "app"."filter_install" USING btree ("device_id","created_at");--> statement-breakpoint
-CREATE INDEX "notification_user_ix" ON "app"."notification" USING btree ("user_id","created_at");--> statement-breakpoint
+CREATE INDEX "filter_install_device_ix" ON "app"."filter_install" USING btree ("device_id","installed_at");--> statement-breakpoint
+CREATE INDEX "notification_user_ix" ON "app"."notification" USING btree ("user_id","at");--> statement-breakpoint
 CREATE UNIQUE INDEX "schedule_version_uq" ON "app"."schedule_version" USING btree ("device_id","version");--> statement-breakpoint
 CREATE UNIQUE INDEX "schedule_version_local_uq" ON "app"."schedule_version" USING btree ("device_id","local_version") WHERE "app"."schedule_version"."local_version" is not null;--> statement-breakpoint
 CREATE UNIQUE INDEX "setting_tenant_uq" ON "app"."setting" USING btree ("tenant_id","key") WHERE "app"."setting"."device_id" is null;--> statement-breakpoint
