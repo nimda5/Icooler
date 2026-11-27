@@ -1,0 +1,26 @@
+{
+  "id": "00000000-0000-4000-8000-000000000040",
+  "cmd_id": "c-8f2a",
+  "device_id": "00000000-0000-4000-8000-000000000010",
+  "op": "POST",
+  "param": "hottank",
+  "value": "0",
+  "status": "success",
+  "initiator_id": "00000000-0000-4000-8000-000000000002",
+  "created_at": "2026-12-07T09:00:00Z",
+  "deadline_at": "2026-12-07T09:00:30Z",
+  "status_times": {
+    "pending": "2026-12-07T09:00:00Z",
+    "sent": "2026-12-07T09:00:00.2Z",
+    "ack": "2026-12-07T09:00:00.9Z",
+    "success": "2026-12-07T09:00:01.4Z"
+  },
+  "result": {
+    "code": 200,
+    "applied": "pushed"
+  },
+  "expired_reason": null,
+  "late_result": false,
+  "controller_confirmed_ms": 820,
+  "controller_confirmed": true
+}

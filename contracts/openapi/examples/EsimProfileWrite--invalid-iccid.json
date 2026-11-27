@@ -1,0 +1,12 @@
+{
+  "iccid": "12AB",
+  "eid": "89049032000001000000000000000012",
+  "imsi": "247010000000001",
+  "msisdn": "+37120000001",
+  "imei": "356938035643809",
+  "apn": "internet.lmt.lv",
+  "carrier": "LMT",
+  "tariff": "IoT 1GB",
+  "traffic_limit_mb": 1024,
+  "contract_until": "2028-12-31"
+}
