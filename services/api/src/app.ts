@@ -16,12 +16,16 @@ import { UsersController } from './modules/users.controller.ts';
 import { TenantsController } from './modules/tenants.controller.ts';
 import { AuditController } from './modules/audit.controller.ts';
 import { SettingsController } from './modules/settings.controller.ts';
+import { ClientsController } from './modules/clients.controller.ts';
+import { DevicesController } from './modules/devices.controller.ts';
+import { NoTelemetry, TELEMETRY } from './telemetry.ts';
+import { GEOCODER, geocoderFromEnv, type Geocoder } from './geocoder.ts';
 
-export const CONTROLLERS = [AuthController, UsersController, TenantsController, AuditController, SettingsController];
+export const CONTROLLERS = [AuthController, UsersController, TenantsController, AuditController, SettingsController, ClientsController, DevicesController];
 
 @Module({})
 class AppModule {
-  static with(cfg: Config, mailer: Mailer, limiter: RateLimiter): DynamicModule {
+  static with(cfg: Config, mailer: Mailer, limiter: RateLimiter, geocoder: Geocoder): DynamicModule {
     return {
       module: AppModule,
       controllers: CONTROLLERS,
@@ -29,6 +33,8 @@ class AppModule {
         { provide: CONFIG, useValue: cfg },
         { provide: MAILER, useValue: mailer },
         { provide: RateLimiter, useValue: limiter },
+        { provide: TELEMETRY, useValue: new NoTelemetry() },
+        { provide: GEOCODER, useValue: geocoder },
         { provide: Db, useFactory: () => new Db(cfg), },
         { provide: APP_GUARD, useClass: ApiGuard },
         { provide: APP_FILTER, useClass: ProblemFilter },
@@ -37,8 +43,8 @@ class AppModule {
   }
 }
 
-export async function createApp(cfg: Config, mailer: Mailer, limiter = new RateLimiter()): Promise<NestFastifyApplication> {
-  const app = await NestFactory.create<NestFastifyApplication>(AppModule.with(cfg, mailer, limiter),
+export async function createApp(cfg: Config, mailer: Mailer, limiter = new RateLimiter(), geocoder: Geocoder = geocoderFromEnv()): Promise<NestFastifyApplication> {
+  const app = await NestFactory.create<NestFastifyApplication>(AppModule.with(cfg, mailer, limiter, geocoder),
     new FastifyAdapter({ trustProxy: (_addr: string, hop: number) => hop < cfg.trustProxyHops, bodyLimit: 1024 * 1024 }), { logger: ['error', 'warn'] });
   await app.register(fastifyCookie as never);
   app.setGlobalPrefix('api/v1');
