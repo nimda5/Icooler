@@ -2,5 +2,40 @@
   "name": "@icooler/web-operator",
   "version": "0.0.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "gen": "openapi-typescript ../../contracts/openapi/openapi.yaml -o src/api/schema.d.ts --default-non-nullable=false && node scripts/gen-roles.mjs",
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node scripts/check-gen.mjs && vitest run"
+  },
+  "dependencies": {
+    "@mantine/core": "8.3.18",
+    "@mantine/form": "8.3.18",
+    "@mantine/hooks": "8.3.18",
+    "@mantine/notifications": "8.3.18",
+    "@tabler/icons-react": "3.51.0",
+    "@tanstack/react-query": "5.107.1",
+    "openapi-fetch": "0.17.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-router": "7.18.5"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "6.10.0",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.9",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "5.2.0",
+    "jsdom": "26.1.0",
+    "openapi-typescript": "7.13.0",
+    "postcss": "8.5.32",
+    "postcss-preset-mantine": "1.18.0",
+    "typescript": "5.9.3",
+    "vite": "7.3.8",
+    "vitest": "3.2.7",
+    "yaml": "2.9.1"
+  }
 }
