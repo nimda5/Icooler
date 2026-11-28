@@ -5,7 +5,8 @@ import { Providers, makeQueryClient } from '../providers';
 import { App } from '../App';
 import { setFetch } from '../api/client';
 
-export type Handler = (req: Request, body: unknown) => { status: number; body?: unknown } | Promise<{ status: number; body?: unknown }>;
+type Reply = { status: number; body?: unknown; raw?: { body: BodyInit; headers: Record<string, string> } };
+export type Handler = (req: Request, body: unknown) => Reply | Promise<Reply>;
 export interface Call { method: string; path: string; body: unknown; headers: Headers }
 
 export function fakeApi(routes: Record<string, Handler>) {
@@ -15,13 +16,15 @@ export function fakeApi(routes: Record<string, Handler>) {
     const url = new URL(req.url, 'http://localhost');
     const path = url.pathname.replace(/^\/api\/v1/, '');
     const text = req.method === 'GET' ? '' : await req.clone().text();
-    const body = text ? JSON.parse(text) : undefined;
+    const json = (req.headers.get('content-type') ?? '').includes('json');
+    const body = text ? (json ? JSON.parse(text) : text) : undefined; // multipart — текстом
     calls.push({ method: req.method, path: path + url.search, body, headers: req.headers });
     const key = Object.keys(routes).find((k) => {
       const [m, p] = k.split(' ');
       return m === req.method && new RegExp(`^${p!.replace(/:\w+/g, '[^/]+')}$`).test(path);
     });
     const r = key ? await routes[key]!(req, body) : { status: 404, body: { type: 'x', title: 'Not Found', status: 404 } };
+    if (r.raw) return new Response(r.raw.body, { status: r.status, headers: r.raw.headers });
     return new Response(r.body === undefined ? null : JSON.stringify(r.body), {
       status: r.status, headers: { 'content-type': r.status >= 400 ? 'application/problem+json' : 'application/json' },
     });

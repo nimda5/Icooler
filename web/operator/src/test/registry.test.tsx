@@ -358,3 +358,103 @@ describe('строки таблиц', () => {
     expect(await screen.findByRole('heading', { name: 'Installation addresses' })).toBeInTheDocument();
   });
 });
+
+describe('импорт и экспорт (V-016)', () => {
+  const blobs: Blob[] = [];
+  const names: string[] = [];
+  const stubDownload = () => {
+    URL.createObjectURL = ((b: Blob) => { blobs.push(b); return 'blob:x'; }) as typeof URL.createObjectURL;
+    URL.revokeObjectURL = () => {};
+    HTMLAnchorElement.prototype.click = function click(this: HTMLAnchorElement) { names.push(this.download); };
+  };
+
+  it('экспорт: текущие фильтры и формат в запросе, файл сохраняется под именем из ответа', async () => {
+    stubDownload();
+    const calls = fakeApi({ ...base('exec'), 'GET /devices': () => ({ status: 200, body: page([listItem]) }),
+      'GET /devices/export': () => ({ status: 200, raw: { body: '﻿device_id\r\ncooler-001\r\n', headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="devices-2026-11-28.csv"' } } }) });
+    const u = userEvent.setup();
+    renderAt('/devices');
+    await screen.findByRole('link', { name: 'SN-001' });
+    await u.click(within(screen.getByRole('group', { name: 'State' })).getByRole('button', { name: 'Warning' }));
+    await u.click(screen.getByRole('button', { name: 'Export' }));
+    await u.click(await screen.findByRole('menuitem', { name: 'Excel (XLSX)' }));
+    await waitFor(() => expect(names).toContain('devices-2026-11-28.csv'));
+    const q = new URLSearchParams(calls.find((c) => c.path.startsWith('/devices/export'))!.path.split('?')[1]);
+    expect([q.get('format'), q.get('state'), q.get('sort')]).toEqual(['xlsx', 'warning', '-created_at']);
+    const text = await new Promise<string>((res) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.readAsText(blobs.at(-1)!); });
+    expect(text).toContain('cooler-001');
+    expect(screen.queryByRole('button', { name: 'Import' })).toBeNull(); // Exec — только выгрузка
+  });
+
+  it('экспорт: ошибка сервера (problem+json) — сообщение, файл не сохраняется', async () => {
+    stubDownload();
+    names.length = 0;
+    fakeApi({ ...base('admin'), 'GET /devices': () => ({ status: 200, body: page([listItem]) }),
+      'GET /devices/export': () => ({ status: 422, body: { type: 'x', title: 'Unprocessable', status: 422, detail: 'больше 50000 устройств — сузьте фильтр' } }) });
+    const u = userEvent.setup();
+    renderAt('/devices');
+    await u.click(await screen.findByRole('button', { name: 'Export' }));
+    await u.click(await screen.findByRole('menuitem', { name: 'CSV' }));
+    expect(await screen.findByText(/сузьте фильтр/)).toBeInTheDocument();
+    expect(names).toHaveLength(0);
+  });
+
+  it('импорт: проверка (dry_run) — отчёт по строкам; загрузка — тот же файл, список обновлён', async () => {
+    let imported = false;
+    const calls = fakeApi({ ...base('tech'), 'GET /devices': () => ({ status: 200, body: page(imported ? [listItem, { ...listItem, id: 'd0000000-0000-4000-8000-000000000009', serial: 'SN-NEW' }] : [listItem]) }),
+      'POST /devices/import': (r) => {
+        const dry = new URL(r.url).searchParams.get('dry_run') === 'true';
+        if (!dry) imported = true;
+        return { status: 200, body: { total: 3, accepted: 2, dry_run: dry, errors: [{ row: 4, column: 'imei', message: 'IMEI — 15 цифр' }] } };
+      } });
+    // FormData из jsdom fetch из Node не сериализует (уходит текстом) — проверяем, что в форму кладётся сам файл под именем file;
+    // настоящий multipart проверен в браузере на стенде.
+    const appended: [string, unknown][] = [];
+    const orig = FormData.prototype.append;
+    FormData.prototype.append = function append(this: FormData, k: string, v: string | Blob) { appended.push([k, v]); return orig.call(this, k, v as Blob); } as typeof orig;
+    const u = userEvent.setup();
+    renderAt('/devices');
+    await u.click(await screen.findByRole('button', { name: 'Import' }));
+    const dlg = await screen.findByRole('dialog');
+    expect(within(dlg).getByRole('button', { name: 'Check' })).toBeDisabled();
+    const file = new File(['device_id,serial,water_source,variant,carbonated\nx,y,mains,A,true\n'], 'devices.csv', { type: 'text/csv' });
+    await u.upload(dlg.querySelector('input[type=file]') as HTMLInputElement, file);
+    await u.click(within(dlg).getByRole('button', { name: 'Check' }));
+    expect(await within(dlg).findByText('Check result')).toBeInTheDocument();
+    expect(within(dlg).getByText('IMEI — 15 цифр').closest('tr')).toHaveTextContent('4imeiIMEI — 15 цифр');
+    const post = calls.find((c) => c.method === 'POST')!;
+    expect(post.path).toBe('/devices/import?dry_run=true');
+    expect(appended).toEqual([['file', file]]);
+    FormData.prototype.append = orig;
+    expect(imported).toBe(false);
+    await u.click(within(dlg).getByRole('button', { name: 'Import' }));
+    expect(await within(dlg).findByText('Import result')).toBeInTheDocument();
+    expect(calls.filter((c) => c.method === 'POST').at(-1)!.path).toBe('/devices/import?dry_run=false');
+    expect(await screen.findByRole('link', { name: 'SN-NEW' })).toBeInTheDocument();
+  });
+
+  it('импорт: ошибка файла целиком (422) — сообщение сервера', async () => {
+    fakeApi({ ...base('admin'), 'GET /devices': () => ({ status: 200, body: page([]) }),
+      'POST /devices/import': () => ({ status: 422, body: { type: 'x', title: 'Unprocessable', status: 422, detail: 'нет обязательных столбцов: carbonated', errors: [{ path: '/file', message: 'нет обязательных столбцов: carbonated' }] } }) });
+    const u = userEvent.setup();
+    renderAt('/devices');
+    await u.click(await screen.findByRole('button', { name: 'Import' }));
+    const dlg = await screen.findByRole('dialog');
+    await u.upload(dlg.querySelector('input[type=file]') as HTMLInputElement, new File(['a\n'], 'a.csv', { type: 'text/csv' }));
+    await u.click(within(dlg).getByRole('button', { name: 'Check' }));
+    expect(await screen.findByText('нет обязательных столбцов: carbonated')).toBeInTheDocument();
+  });
+
+  it('Dispatcher — ни выгрузки, ни загрузки; фильтры прошивки и eSIM уходят в запрос', async () => {
+    const calls = fakeApi({ ...base('dispatcher'), 'GET /devices': () => ({ status: 200, body: page([listItem]) }) });
+    const u = userEvent.setup();
+    renderAt('/devices');
+    await screen.findByRole('link', { name: 'SN-001' });
+    expect(screen.queryByRole('button', { name: 'Export' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Import' })).toBeNull();
+    await u.type(screen.getByRole('textbox', { name: 'Firmware' }), '2.5.0');
+    await u.click(screen.getByRole('textbox', { name: 'eSIM status' }));
+    await u.click(await screen.findByRole('option', { name: 'Suspended', hidden: true }));
+    await waitFor(() => expect(calls.some((c) => c.path.includes('fw=2.5.0') && c.path.includes('esim_status=suspended'))).toBe(true));
+  });
+});

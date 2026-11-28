@@ -304,7 +304,7 @@ test('каждая операция тегов auth, profile, tenants, users, en
     'bindEndUserClient', 'unbindEndUserClient', 'listAudit', 'getSettings', 'updateSettings', 'getDeviceSettings', 'updateDeviceSettings',
     'listClients', 'createClient', 'getClient', 'updateClient', 'deleteClient', 'createAddress', 'updateAddress', 'deleteAddress',
     'createContact', 'updateContact', 'deleteContact', 'listDevices', 'createDevice', 'getDevice', 'updateDevice', 'transferDevice',
-    'setLifecycle', 'setOwnership', 'getDeviceHistory', 'getMap'];
+    'setLifecycle', 'setOwnership', 'getDeviceHistory', 'getMap', 'importDevices', 'exportDevices'];
   assert.deepEqual([...handled].sort(), want.sort());
 });
 

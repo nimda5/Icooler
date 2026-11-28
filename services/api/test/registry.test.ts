@@ -29,6 +29,20 @@ type Role = (typeof ROLES)[number];
 const uid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 
 let app: NestFastifyApplication;
+
+/** multipart/form-data с одним файлом (поле file). */
+class Multipart {
+  readonly boundary = `----icooler${Math.random().toString(16).slice(2)}`;
+  readonly buf: Buffer;
+  constructor(content: string | Buffer, field = 'file', filename = 'devices.csv') {
+    this.buf = Buffer.concat([
+      Buffer.from(`--${this.boundary}\r\nContent-Disposition: form-data; name="${field}"; filename="${filename}"\r\nContent-Type: text/csv\r\n\r\n`),
+      Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf8'), Buffer.from(`\r\n--${this.boundary}--\r\n`),
+    ]);
+  }
+}
+const csvFile = (lines: string[]) => new Multipart(lines.join('\n'));
+const IMPORT_SAMPLE = csvFile(['device_id,serial,water_source,variant,carbonated', 'matrix-dry,MATRIX-DRY,mains,A,false']);
 let pool: pg.Pool;
 interface Sess { cookie: string; csrf: string }
 interface Res { status: number; body: any }
@@ -38,8 +52,11 @@ const ROUTES = [...operations().values()].map((o) => ({ o, re: new RegExp(`^${o.
 async function call(method: string, path: string, s?: Sess, body?: unknown): Promise<Res> {
   const headers: Record<string, string> = {};
   if (s) { headers['cookie'] = s.cookie; headers['x-csrf-token'] = s.csrf; }
-  const r = await app.inject({ method: method as 'GET', url: `/api/v1${path}`, headers, ...(body !== undefined ? { payload: body as object } : {}) });
-  const res = { status: r.statusCode, body: r.body ? JSON.parse(r.body) : null };
+  const mp = body instanceof Multipart;
+  if (mp) headers['content-type'] = `multipart/form-data; boundary=${body.boundary}`;
+  const r = await app.inject({ method: method as 'GET', url: `/api/v1${path}`, headers, ...(body !== undefined ? { payload: mp ? body.buf : body as object } : {}) });
+  const json = String(r.headers['content-type'] ?? '').includes('json');
+  const res = { status: r.statusCode, body: r.body && json ? JSON.parse(r.body) : r.body || null };
   const op = ROUTES.find((x) => x.o.method === method && x.re.test(path.split('?')[0]!))?.o;
   assert.ok(op, `нет операции для ${method} ${path}`);
   if (res.status >= 200 && res.status < 300) {
@@ -126,7 +143,7 @@ after(async () => {
   await adm.end();
 });
 
-test('права: 20 операций × 6 ролей — разрешено 2xx, запрещено 403 (матрица 7.1)', async () => {
+test('права: 22 операции × 6 ролей — разрешено 2xx, запрещено 403 (матрица 7.1)', async () => {
   const REQ: Record<string, () => Promise<[string, string, unknown?]>> = {
     listClients: async () => ['GET', '/clients'],
     createClient: async () => ['POST', '/clients', { type: 'person', name: 'P' }],
@@ -154,6 +171,8 @@ test('права: 20 операций × 6 ролей — разрешено 2xx
     setOwnership: async () => ['PUT', `/devices/${await mkDevice()}/ownership`, { ownership: 'rent' }],
     getDeviceHistory: async () => ['GET', `/devices/${await mkDevice()}/history`],
     getMap: async () => ['GET', '/map?bbox=20,55,30,60&zoom=6'],
+    exportDevices: async () => ['GET', '/devices/export?format=csv'],
+    importDevices: async () => ['POST', '/devices/import?dry_run=true', IMPORT_SAMPLE],
   };
   for (const [opId, req] of Object.entries(REQ)) {
     for (const role of ROLES) {
@@ -447,4 +466,193 @@ test('перенос одновременно с удалением адреса
     () => send('DELETE', `/addresses/${a2}`),
     async (c) => { await c.query('update app.device set client_id = $2, address_id = $3 where id = $1', [d2, cl, a2]); });
   assert.equal(r2.status, 409);
+});
+
+// ---------------------------------------------------------------- импорт и экспорт (V-016)
+
+test('импорт: строки с ошибками не загружаются, остальные — да; отчёт по строкам и столбцам', async () => {
+  await mkDevice({ device_id: 'imp-taken', serial: 'IMP-TAKEN', imei: '356938035643800' });
+  const file = csvFile([
+    'device_id,serial,imei,water_source,variant,carbonated,sku,hw,ownership,description',
+    'imp-1,IMP-1,,mains,A,true,SS_POU_CHA,rev C,rent,"Склад, полка B"', // 2: ок
+    'imp-2,IMP-2,356938035643801,bottle_top,s,no,,,,', // 3: ок (variant в нижнем регистре)
+    'imp-taken,IMP-3,,mains,A,false,,,,', // 4: Device ID занят
+    'imp-4,IMP-TAKEN,,mains,A,false,,,,', // 5: серийник занят
+    'imp-5,IMP-5,356938035643800,mains,A,false,,,,', // 6: IMEI занят
+    'imp-6,IMP-1,,mains,A,false,,,,', // 7: повтор серийника строки 2
+    'imp 7,IMP-7,12345,tap,B,maybe,,,lease,', // 8: carbonated — первым
+    'imp-8,IMP-8,12345,tap,B,false,,,lease,', // 9: схема: IMEI, тип воды, исполнение, владение, Device ID ок
+    ',IMP-9,,mains,A,false,,,,', // 10: пустой Device ID
+    'imp-10,IMP-10,,mains,A,false,,,,,лишнее', // 11: значений больше столбцов
+  ]);
+  const r = await send('POST', '/devices/import', file);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.body.total, r.body.accepted, r.body.dry_run], [10, 2, false]);
+  const by = (row: number) => r.body.errors.filter((e: { row: number }) => e.row === row).map((e: { column?: string }) => e.column ?? '').sort();
+  assert.deepEqual(by(4), ['device_id']);
+  assert.deepEqual(by(5), ['serial']);
+  assert.deepEqual(by(6), ['imei']);
+  assert.deepEqual(by(7), ['serial']);
+  assert.match(r.body.errors.find((e: { row: number }) => e.row === 7).message, /строки 2/);
+  assert.deepEqual(by(8), ['carbonated']);
+  assert.deepEqual(by(9), ['imei', 'ownership', 'variant', 'water_source']);
+  assert.match(r.body.errors.find((e: { row: number; column: string }) => e.row === 9 && e.column === 'water_source').message, /mains/);
+  assert.deepEqual(by(10), ['device_id']);
+  assert.deepEqual(by(11), ['']);
+  const list = (await get('/devices?q=imp-&limit=200')).body.items;
+  assert.deepEqual(list.map((d: { device_id: string }) => d.device_id).sort(), ['imp-1', 'imp-2', 'imp-taken']);
+  const d1 = list.find((d: { device_id: string }) => d.device_id === 'imp-1');
+  assert.deepEqual([d1.model.sku, d1.model.carbonated, d1.hw, d1.ownership, d1.description], ['SS_POU_CHA', true, 'rev C', 'rent', 'Склад, полка B']);
+  assert.equal(list.find((d: { device_id: string }) => d.device_id === 'imp-2').model.variant, 'S');
+  const acts = (await get('/audit-log?action=device.import')).body.items;
+  assert.equal(acts[0].after.accepted, 2);
+});
+
+test('импорт dry_run: тот же отчёт, ничего не записано, аудита нет', async () => {
+  const file = () => csvFile(['device_id;serial;water_source;variant;carbonated', 'dry-1;DRY-1;mains;A;да', 'dry-2;DRY-1;mains;A;нет']);
+  const r = await send('POST', '/devices/import?dry_run=true', file());
+  assert.deepEqual([r.body.total, r.body.accepted, r.body.dry_run, r.body.errors.length], [2, 1, true, 1]);
+  assert.equal((await get('/devices?q=dry-')).body.items.length, 0);
+  const real = await send('POST', '/devices/import', file());
+  assert.deepEqual([real.body.accepted, real.body.dry_run], [1, false]);
+  assert.equal((await get('/devices?q=dry-')).body.items.length, 1);
+});
+
+test('импорт: файл целиком — 422 (нет столбцов, неизвестный столбец, пусто, не UTF-8, не тот multipart, больше 1 МБ)', async () => {
+  const cases: [Multipart | object, RegExp][] = [
+    [csvFile(['device_id,serial,water_source,variant', 'x,y,mains,A']), /carbonated/],
+    [csvFile(['device_id,serial,water_source,variant,carbonated,colour', 'x,y,mains,A,true,red']), /colour/],
+    [csvFile(['device_id,serial,water_source,variant,carbonated']), /нет строк/],
+    [csvFile(['']), /пуст/],
+    [csvFile(['device_id,serial,serial,water_source,variant,carbonated', 'a,b,c,mains,A,true']), /повторяется/],
+    [new Multipart(Buffer.from([0x64, 0x65, 0xff, 0xfe, 0x0a])), /UTF-8/],
+    [new Multipart('device_id\n', 'upload'), /файл в поле file|нет поля file/],
+    [new Multipart(`device_id,serial,water_source,variant,carbonated\n${'x'.repeat(1024 * 1024 + 10)}`), /1 МБ/],
+    [csvFile(['device_id,serial,water_source,variant,carbonated', '"x,y,mains,A,true']), /кавычка/],
+    [{ file: 'device_id' }, /multipart/],
+  ];
+  for (const [body, re] of cases) {
+    const r = await send('POST', '/devices/import', body);
+    assert.equal(r.status, 422, `${re}: ${r.status} ${JSON.stringify(r.body)}`);
+    assert.match(JSON.stringify(r.body), re);
+  }
+  const many = ['device_id,serial,water_source,variant,carbonated', ...Array.from({ length: 5001 }, (_, i) => `m-${i},M-${i},mains,A,true`)];
+  assert.match(JSON.stringify((await send('POST', '/devices/import', csvFile(many))).body), /5000/);
+});
+
+test('импорт без CSRF — 403, другой арендатор видит только свои устройства', async () => {
+  const r = await app.inject({ method: 'POST', url: '/api/v1/devices/import', headers: { cookie: sess.admin.cookie, 'content-type': `multipart/form-data; boundary=${IMPORT_SAMPLE.boundary}` }, payload: IMPORT_SAMPLE.buf });
+  assert.equal(r.statusCode, 403);
+  await send('POST', '/devices/import', csvFile(['device_id,serial,water_source,variant,carbonated', 'tenant-b-1,TB-1,mains,A,false']), sess.adminB);
+  assert.equal((await get('/devices?q=tenant-b-1')).body.items.length, 0);
+  assert.equal((await get('/devices?q=tenant-b-1', sess.adminB)).body.items.length, 1);
+});
+
+test('экспорт CSV: фильтры и сортировка как у списка, заголовок вложения, круг «выгрузил → загрузил»', async () => {
+  const cl = await mkClient('Export client');
+  const a = await mkAddress(cl, { region: 'Zemgale', floor: '2', place: 'Hall' });
+  for (const i of [2, 1]) {
+    const d = await mkDevice({ device_id: `exp-${i}`, serial: `EXP-${i}`, description: i === 1 ? '=cmd|calc' : 'Rīga, "centrs"' });
+    await send('POST', `/devices/${d}/transfer`, { client_id: cl, address_id: a });
+  }
+  const r = await app.inject({ method: 'GET', url: `/api/v1/devices/export?format=csv&client_id=${cl}&sort=serial`, headers: { cookie: sess.exec.cookie } });
+  assert.equal(r.statusCode, 200, r.body);
+  assert.match(String(r.headers['content-type']), /^text\/csv/);
+  assert.match(String(r.headers['content-disposition']), /^attachment; filename="devices-\d{4}-\d{2}-\d{2}\.csv"$/);
+  const { parseCsv } = await import('../src/io/csv.ts');
+  const rows = parseCsv(r.body);
+  const h = rows[0]!;
+  assert.deepEqual(rows.slice(1).map((x) => x[h.indexOf('serial')]), ['EXP-1', 'EXP-2']);
+  const row1 = Object.fromEntries(h.map((k, i) => [k, rows[1]![i]]));
+  assert.deepEqual([row1['client'], row1['region'], row1['floor'], row1['place'], row1['state'], row1['description']],
+    ['Export client', 'Zemgale', '2', 'Hall', 'offline', "'=cmd|calc"]);
+  // выгруженный файл загружается в другой арендатор как есть
+  const back = await send('POST', '/devices/import?dry_run=true', new Multipart(r.rawPayload), sess.adminB);
+  assert.equal(back.status, 200, JSON.stringify(back.body));
+  // разобран целиком (все столбцы выгрузки допустимы); отклонено только то, что и должно: Device ID уникален во всей платформе
+  assert.deepEqual([back.body.total, back.body.accepted], [2, 0]);
+  assert.deepEqual(back.body.errors.map((e: { column?: string }) => e.column), ['device_id', 'device_id']);
+});
+
+test('экспорт XLSX: книга открывается, строки и заголовок на месте; больше лимита и неверный формат — 422', async () => {
+  const r = await app.inject({ method: 'GET', url: '/api/v1/devices/export?format=xlsx&q=EXP-', headers: { cookie: sess.admin.cookie } });
+  assert.equal(r.statusCode, 200);
+  assert.equal(r.headers['content-type'], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  const { sheetCells } = await import('./io.test.ts');
+  const cells = sheetCells(r.rawPayload);
+  assert.equal(cells.get('A1'), 'device_id');
+  assert.deepEqual([cells.get('B2'), cells.get('B3')].sort(), ['EXP-1', 'EXP-2']);
+  assert.equal((await get('/devices/export?format=pdf')).status, 422);
+  assert.equal((await get('/devices/export')).status, 422);
+  assert.equal((await get('/devices/export?format=csv&state=operational')).body.split('\r\n').filter(Boolean).length, 1); // только заголовок
+});
+
+test('импорт: номер строки в отчёте — строка файла, где начинается запись (многострочное описание, пустые строки)', async () => {
+  const file = new Multipart('device_id,serial,water_source,variant,carbonated,description\n'
+    + 'ln-1,LN-1,mains,A,true,"первая\nвторая\nтретья"\n\n'
+    + 'ln-2,LN-2,tap,A,true,\n');
+  const r = await send('POST', '/devices/import?dry_run=true', file);
+  assert.deepEqual(r.body.errors.map((e: { row: number; column: string }) => [e.row, e.column]), [[6, 'water_source']]);
+});
+
+test('импорт: NUL в значении — ошибка строки, остальные строки загружаются', async () => {
+  const r = await send('POST', '/devices/import', csvFile(['device_id,serial,water_source,variant,carbonated', 'nul-1,NUL\u0000X,mains,A,true', 'nul-2,NUL-2,mains,A,true']));
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.body.accepted, r.body.errors[0].row, r.body.errors[0].column], [1, 2, 'serial']);
+});
+
+test('импорт: лишние части multipart (второй файл, поле) — 422 до записи', async () => {
+  const b = `----x${Date.now()}`;
+  const part = (name: string, body: string, file = true) => `--${b}\r\nContent-Disposition: form-data; name="${name}"${file ? '; filename="f.csv"\r\nContent-Type: text/csv' : ''}\r\n\r\n${body}\r\n`;
+  const csv = 'device_id,serial,water_source,variant,carbonated\nmp-1,MP-1,mains,A,true';
+  for (const extra of [part('file2', csv), part('note', 'x', false), part('file', csv), part('a', 'x', false) + part('b', 'y', false) + part('c', csv)]) {
+    const payload = Buffer.from(part('file', csv) + extra + `--${b}--\r\n`);
+    const r = await app.inject({ method: 'POST', url: '/api/v1/devices/import', payload,
+      headers: { cookie: sess.admin.cookie, 'x-csrf-token': sess.admin.csrf, 'content-type': `multipart/form-data; boundary=${b}` } });
+    assert.equal(r.statusCode, 422, r.body);
+  }
+  assert.equal((await pool.query(`select count(*)::int as n from app.device where device_id = 'mp-1'`)).rows[0].n, 0);
+});
+
+test('две загрузки одновременно с одними Device ID в разном порядке — обе с отчётом, каждое устройство загружено один раз', async () => {
+  const ids = Array.from({ length: 30 }, (_, i) => `par-${i}`);
+  const file = (order: string[], tag: string) => csvFile(['device_id,serial,water_source,variant,carbonated', ...order.map((id) => `${id},${tag}-${id},mains,A,true`)]);
+  const [a, b] = await Promise.all([send('POST', '/devices/import', file(ids, 'A')), send('POST', '/devices/import', file([...ids].reverse(), 'B'), sess.adminB)]);
+  assert.deepEqual([a.status, b.status], [200, 200], JSON.stringify([a.body, b.body]));
+  assert.equal(a.body.accepted + b.body.accepted, 30);
+  assert.equal(a.body.errors.length + b.body.errors.length, 30);
+  const total = (await pool.query(`select count(*)::int as n from app.device where device_id like 'par-%'`)).rows[0].n;
+  assert.equal(total, 30);
+});
+
+test('выгрузка → загрузка: значения с = + - @ в начале возвращаются как были', async () => {
+  await mkDevice({ device_id: '-rt-dev', serial: '+RT-1', description: '=sum note' });
+  const r = await app.inject({ method: 'GET', url: '/api/v1/devices/export?format=csv&q=rt-dev', headers: { cookie: sess.admin.cookie } });
+  assert.match(r.body, /'-rt-dev/);
+  const csv = r.body.replace('-rt-dev', '-rt-dev2'); // Device ID уникален во всей платформе — новый
+  const back = await send('POST', '/devices/import', new Multipart(csv), sess.adminB);
+  assert.deepEqual([back.status, back.body.accepted, back.body.errors], [200, 1, []]);
+  const d = (await pool.query(`select device_id, serial, description from app.device where device_id = '-rt-dev2'`)).rows[0];
+  assert.deepEqual(d, { device_id: '-rt-dev2', serial: '+RT-1', description: '=sum note' });
+});
+
+test('выгрузка → загрузка: описание как есть — табуляция, крайние пробелы, переводы строк, апострофы', async () => {
+  const descs = ['\t', "'\r", '  spaced  ', 'line 1\nline 2\n', "''=x"];
+  for (const [i, d] of descs.entries()) await mkDevice({ device_id: `desc-rt-${i}`, serial: `DESC-RT-${i}`, description: d });
+  const r = await app.inject({ method: 'GET', url: '/api/v1/devices/export?format=csv&q=desc-rt-&sort=device_id', headers: { cookie: sess.admin.cookie } });
+  const back = await send('POST', '/devices/import', new Multipart(r.body.replaceAll('desc-rt-', 'desc-rt2-')), sess.adminB);
+  assert.deepEqual([back.status, back.body.accepted], [200, descs.length], JSON.stringify(back.body));
+  const got = (await pool.query(`select description from app.device where device_id like 'desc-rt2-%' order by device_id`)).rows.map((x) => x.description);
+  assert.deepEqual(got, descs);
+});
+
+test('повреждённый multipart (нет boundary, оборванное тело) — 422, а не 500', async () => {
+  for (const [ct, payload] of [
+    ['multipart/form-data', 'x'],
+    ['multipart/form-data; boundary=zz', '--zz\r\nContent-Disposition: form-data; name="file"; filename="a.csv"\r\n\r\ndevice_id,se'],
+  ] as const) {
+    const r = await app.inject({ method: 'POST', url: '/api/v1/devices/import', payload,
+      headers: { cookie: sess.admin.cookie, 'x-csrf-token': sess.admin.csrf, 'content-type': ct } });
+    assert.equal(r.statusCode, 422, `${ct}: ${r.statusCode} ${r.body}`);
+  }
 });

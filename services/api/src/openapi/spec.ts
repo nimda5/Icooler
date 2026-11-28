@@ -32,6 +32,8 @@ interface RawOp {
 
 let cache: Map<string, Operation> | undefined;
 let schemas: Record<string, unknown> = {};
+let ajvMain: { compile: (s: unknown) => ValidateFunction } | undefined;
+const rewriteRefs = (x: unknown) => JSON.parse(JSON.stringify(x).replaceAll('#/components/schemas/', 'oas#/$defs/'));
 
 /** Схема из components.schemas контракта (например, перечень ключей настроек). */
 export function component(name: string): Record<string, unknown> {
@@ -39,6 +41,12 @@ export function component(name: string): Record<string, unknown> {
   const s = schemas[name];
   if (!s) throw new Error(`схемы ${name} нет в контракте`);
   return s as Record<string, unknown>;
+}
+
+/** Проверка значения по схеме компонента контракта (например, строка импорта — DeviceCreate). */
+export function componentValidator(name: string): ValidateFunction {
+  component(name);
+  return ajvMain!.compile(rewriteRefs({ $ref: `#/components/schemas/${name}` }));
 }
 
 export function operations(file = join(repoRoot(), 'contracts/openapi/openapi.yaml')): Map<string, Operation> {
@@ -55,6 +63,7 @@ export function operations(file = join(repoRoot(), 'contracts/openapi/openapi.ya
   };
   const rewrite = (x: unknown) => JSON.parse(JSON.stringify(x).replaceAll('#/components/schemas/', 'oas#/$defs/'));
   const ajv = make(false);
+  ajvMain = ajv;
   const ajvQuery = make(true);
   const param = (p: RawParam): RawParam => (p.$ref ? doc.components.parameters[p.$ref.split('/').pop()!]! : p);
   schemas = doc.components.schemas;
