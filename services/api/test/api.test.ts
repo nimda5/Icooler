@@ -301,7 +301,10 @@ test('каждая операция тегов auth, profile, tenants, users, en
   const want = ['login', 'logout', 'logoutAll', 'forgotPassword', 'resetPassword', 'acceptInvitation', 'getProfile', 'updateProfile',
     'changePassword', 'createTenant', 'listUsers', 'inviteUser', 'getUser', 'updateUser', 'deleteUser', 'blockUser', 'unblockUser',
     'listEndUsers', 'inviteEndUser', 'getEndUser', 'updateEndUser', 'deleteEndUser', 'blockEndUser', 'unblockEndUser',
-    'bindEndUserClient', 'unbindEndUserClient', 'listAudit', 'getSettings', 'updateSettings', 'getDeviceSettings', 'updateDeviceSettings'];
+    'bindEndUserClient', 'unbindEndUserClient', 'listAudit', 'getSettings', 'updateSettings', 'getDeviceSettings', 'updateDeviceSettings',
+    'listClients', 'createClient', 'getClient', 'updateClient', 'deleteClient', 'createAddress', 'updateAddress', 'deleteAddress',
+    'createContact', 'updateContact', 'deleteContact', 'listDevices', 'createDevice', 'getDevice', 'updateDevice', 'transferDevice',
+    'setLifecycle', 'setOwnership', 'getDeviceHistory', 'getMap'];
   assert.deepEqual([...handled].sort(), want.sort());
 });
 

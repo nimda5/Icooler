@@ -7,6 +7,8 @@ export interface Scope {
   tenantId: string | null;
   /** SIG Administrator: строки вне арендатора (app.scope = global). */
   global?: boolean;
+  /** Чтение в одном снимке из нескольких запросов (карта): REPEATABLE READ. */
+  snapshot?: boolean;
 }
 
 export class Db {
@@ -25,7 +27,7 @@ export class Db {
   async tx<T>(scope: Scope, fn: (c: pg.PoolClient) => Promise<T>): Promise<T> {
     const c = await this.pool.connect();
     try {
-      await c.query('begin');
+      await c.query(scope.snapshot ? 'begin isolation level repeatable read' : 'begin');
       await c.query(`set local role ${this.#role}`);
       await c.query(`select set_config('app.tenant_id', $1, true), set_config('app.scope', $2, true)`,
         [scope.tenantId ?? '', scope.global ? 'global' : '']);
