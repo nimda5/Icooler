@@ -1,0 +1,102 @@
+/* Вид портала — по демо заказчика (docs/01-Fleet-Dashboard.html): нейтральная палитра, чёрный акцент, Inter,
+   крупные заголовки, карточки со скруглением 20 px. Токены демо — те же имена, светлая и тёмная тема. */
+:root {
+  --bg: #f4f4f5; --elev: #ffffff; --elev-2: #f9f9fa; --elev-3: #ececee; --sidebar: #ffffff;
+  /* --text-3 темнее, чем в демо (#8e9098 — 3,2:1): мелкому тексту нужно 4,5:1 */
+  --text: #0b0b0c; --text-2: #55575e; --text-3: #6c6e76;
+  --border: rgba(11, 11, 12, .08); --border-strong: rgba(11, 11, 12, .14);
+  --accent: #0b0b0c; --accent-soft: rgba(11, 11, 12, .06);
+  --ok: #1fb57a; --ok-text: #0b7a4e; --ok-soft: rgba(31, 181, 122, .12); --warn: #f29f05; --warn-text: #8a5800; --warn-soft: rgba(242, 159, 5, .14);
+  --crit: #f0443a; --crit-text: #c4261c; --crit-soft: rgba(240, 68, 58, .11); --off: #9aa1ad; --off-soft: rgba(154, 161, 173, .14);
+  --cold: #0ea5e9; --cold-soft: rgba(14, 165, 233, .12); --hot: #ff6a3d; --hot-soft: rgba(255, 106, 61, .12);
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, .04), 0 1px 1px rgba(16, 24, 40, .02);
+  --shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 8px 24px -8px rgba(16, 24, 40, .08);
+  --shadow-lg: 0 24px 64px -16px rgba(16, 24, 40, .22), 0 2px 6px rgba(16, 24, 40, .05);
+  --r-sm: 8px; --r: 14px; --r-lg: 20px;
+}
+[data-mantine-color-scheme='dark'] {
+  --bg: #0b0b0c; --elev: #141416; --elev-2: #19191c; --elev-3: #222226; --sidebar: #0e0e10;
+  --text: #ededf0; --text-2: #a3a5ac; --text-3: #8e9098;
+  --border: rgba(255, 255, 255, .07); --border-strong: rgba(255, 255, 255, .13);
+  --accent: #c6c8ce; --accent-soft: rgba(255, 255, 255, .08); --warn-text: #ffbf47; --ok-text: #4fe0a4; --crit-text: #ff8a80;
+  --ok-soft: rgba(31, 181, 122, .16); --warn-soft: rgba(242, 159, 5, .16); --crit-soft: rgba(240, 68, 58, .16); --off-soft: rgba(154, 161, 173, .16);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .3); --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px -8px rgba(0, 0, 0, .5);
+}
+body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
+
+/* Каркас */
+.ic-logo { font-size: 24px; font-weight: 800; letter-spacing: -.05em; line-height: 1; color: var(--text); }
+.ic-logo-sub { font-size: 10.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--text-3); margin-top: 6px; }
+.ic-nav-label { font-size: 11px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: .06em; padding: 0 10px 8px; }
+.ic-nav { display: flex; flex-direction: column; gap: 2px; }
+.ic-nav a { display: flex; align-items: center; gap: 11px; padding: 8px 10px; border-radius: 10px; color: var(--text-2); font-weight: 500;
+  font-size: 13.5px; text-decoration: none; transition: background .15s, color .15s; }
+.ic-nav a:hover { background: var(--elev-3); color: var(--text); }
+.ic-nav a[data-active='true'] { background: var(--elev); color: var(--text); box-shadow: var(--shadow-sm); outline: 1px solid var(--border); }
+.ic-user { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px; border-radius: var(--r); border: 1px solid var(--border);
+  background: var(--elev); box-shadow: var(--shadow-sm); text-align: left; }
+
+/* Заголовок страницы */
+.ic-page-title { font-size: 32px; font-weight: 780; letter-spacing: -.045em; line-height: 1.1; margin: 0; }
+.ic-page-sub { color: var(--text-2); margin-top: 6px; font-size: 14px; }
+.ic-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
+.ic-title-muted { color: var(--text-3); font-weight: 600; }
+
+/* Карточки */
+.ic-card { background: var(--elev); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow); }
+.ic-card-title { font-size: 15px; font-weight: 620; letter-spacing: -.015em; margin: 0; }
+.ic-card-sub { font-size: 12.5px; color: var(--text-3); margin-top: 2px; }
+.ic-kpi { padding: 18px 20px; }
+.ic-kpi-label { font-size: 12.5px; color: var(--text-2); font-weight: 520; display: flex; align-items: center; justify-content: space-between; gap: 7px; }
+.ic-kpi-value { font-size: 32px; font-weight: 750; letter-spacing: -.045em; margin-top: 8px; font-variant-numeric: tabular-nums; line-height: 1; }
+.ic-kpi-value small { font-size: 15px; font-weight: 550; color: var(--text-3); letter-spacing: -.01em; margin-left: 3px; }
+.ic-kpi-foot { font-size: 12px; color: var(--text-3); margin-top: 10px; }
+.ic-kpi-icon { width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center; }
+
+/* Значки состояния */
+.ic-badge { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 999px; font-size: 11.5px;
+  font-weight: 600; white-space: nowrap; background: var(--elev-3); color: var(--text-2); }
+.ic-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.ic-badge.plain::before { display: none; }
+.ic-badge.ok { background: var(--ok-soft); color: var(--ok-text); }
+.ic-badge.warn { background: var(--warn-soft); color: var(--warn-text); }
+.ic-badge.crit { background: var(--crit-soft); color: var(--crit-text); }
+.ic-badge.off { background: var(--off-soft); color: var(--text-2); }
+.ic-badge.outline { background: transparent; border: 1px solid var(--border-strong); color: var(--text); }
+.ic-badge.outline::before { display: none; }
+
+/* Фильтры-«таблетки» */
+.ic-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.ic-chip { height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--border-strong); background: var(--elev); font: inherit;
+  font-size: 12.5px; font-weight: 550; color: var(--text-2); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all .15s; }
+.ic-chip:hover { color: var(--text); }
+.ic-chip[aria-pressed='true'] { background: var(--text); color: var(--elev); border-color: var(--text); }
+.ic-chip .dot { width: 7px; height: 7px; border-radius: 50%; }
+.ic-chip .n { font-size: 11px; opacity: .7; }
+
+/* Таблицы */
+.ic-table { font-size: 13px; }
+.ic-table thead th { font-weight: 580; font-size: 11.5px; color: var(--text-3); text-transform: uppercase; letter-spacing: .05em; white-space: nowrap;
+  border-bottom: 1px solid var(--border); padding: 10px 14px; }
+.ic-table tbody td { padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.ic-table tbody tr:last-child td { border-bottom: 0; }
+.ic-table tbody tr[data-href] { cursor: pointer; }
+.ic-table tbody tr[data-href]:hover td { background: var(--elev-2); }
+.ic-mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; color: var(--text-3); letter-spacing: -.01em; }
+.ic-primary { font-weight: 600; color: var(--text); }
+.ic-secondary { font-size: 12.5px; color: var(--text-3); }
+
+/* Определения (карточка устройства) */
+.ic-facts { display: grid; grid-template-columns: 140px 1fr; row-gap: 12px; column-gap: 12px; font-size: 13.5px; }
+.ic-facts dt { color: var(--text-3); }
+.ic-facts dd { margin: 0; color: var(--text); overflow-wrap: anywhere; }
+
+/* Панель фильтров карты */
+.ic-glass { background: color-mix(in srgb, var(--elev) 88%, transparent); backdrop-filter: saturate(180%) blur(20px);
+  border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-lg); }
+.ic-statelist button { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: transparent; font: inherit; font-size: 13.5px;
+  color: var(--text); padding: 8px 10px; border-radius: 10px; cursor: pointer; }
+.ic-statelist button:hover { background: var(--elev-3); }
+.ic-statelist button[aria-pressed='true'] { background: var(--elev-3); font-weight: 600; }
+.ic-statelist .dot { width: 9px; height: 9px; border-radius: 50%; }
+.ic-statelist .n { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; }

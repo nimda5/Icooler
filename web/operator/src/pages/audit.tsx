@@ -35,7 +35,7 @@ export function AuditPage() {
         <TextInput label={t('audit.from')} type="datetime-local" value={from} onChange={(e) => setFrom(e.currentTarget.value)} />
         <TextInput label={t('audit.to')} type="datetime-local" value={to} onChange={(e) => setTo(e.currentTarget.value)} />
       </Group>
-      <Table.ScrollContainer minWidth={800}>
+      <div className="ic-card" style={{ padding: '4px 6px' }}><Table.ScrollContainer minWidth={800}>
         <Table striped>
           <Table.Thead>
             <Table.Tr>
@@ -60,7 +60,7 @@ export function AuditPage() {
             ))}
           </Table.Tbody>
         </Table>
-      </Table.ScrollContainer>
+      </Table.ScrollContainer></div>
       {list.isError && !list.isFetchNextPageError && <LoadError error={list.error} retry={() => list.refetch()} />}
       {list.isFetchNextPageError && <LoadError error={list.error} retry={() => list.fetchNextPage()} />}
       {list.isSuccess && items.length === 0 && <Text c="dimmed">{t('audit.empty')}</Text>}

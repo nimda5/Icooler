@@ -46,8 +46,8 @@ export function EndUsersPage() {
     <Stack>
       <PageTitle right={<Button onClick={() => setInviting(true)}>{t('endUsers.invite')}</Button>}>{t('endUsers.title')}</PageTitle>
       <Group><TextInput placeholder={t('common.search')} value={q} onChange={(e) => setQ(e.currentTarget.value)} aria-label={t('common.search')} /></Group>
-      <Table.ScrollContainer minWidth={720}>
-        <Table striped highlightOnHover>
+      <div className="ic-card" style={{ padding: '4px 6px' }}><Table.ScrollContainer minWidth={720}>
+        <Table>
           <Table.Thead>
             <Table.Tr>
               <Table.Th>{t('common.name')}</Table.Th><Table.Th>{t('common.email')}</Table.Th><Table.Th>{t('endUsers.clients')}</Table.Th>
@@ -84,7 +84,7 @@ export function EndUsersPage() {
             ))}
           </Table.Tbody>
         </Table>
-      </Table.ScrollContainer>
+      </Table.ScrollContainer></div>
       {list.isError && !list.isFetchNextPageError && <LoadError error={list.error} retry={() => list.refetch()} />}
       {list.isFetchNextPageError && <LoadError error={list.error} retry={() => list.fetchNextPage()} />}
       {list.isPending && <Text c="dimmed">{t('common.loading')}</Text>}

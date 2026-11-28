@@ -40,6 +40,10 @@ describe('устройства', () => {
     await u.click(screen.getByRole('textbox', { name: 'Lifecycle' }));
     await u.click(await screen.findByRole('option', { name: 'Installed', hidden: true }));
     await waitFor(() => expect(calls.some((c) => c.path.startsWith('/devices?') && c.path.includes('lifecycle=installed') && c.path.includes('sort=-created_at'))).toBe(true));
+    await u.click(within(screen.getByRole('group', { name: 'State' })).getByRole('button', { name: 'Warning' }));
+    await waitFor(() => expect(calls.some((c) => c.path.includes('state=warning'))).toBe(true));
+    await u.click(within(screen.getByRole('group', { name: 'State' })).getByRole('button', { name: 'All' }));
+    await waitFor(() => expect(calls.at(-1)!.path).not.toContain('state='));
     await u.click(screen.getByRole('textbox', { name: 'Alert type' }));
     await u.click(await screen.findByRole('option', { name: 'Filter low', hidden: true }));
     await u.type(screen.getByRole('textbox', { name: 'Filter left ≤ %' }), '20');
@@ -289,13 +293,68 @@ describe('карта', () => {
     await waitFor(() => expect(calls.some((c) => c.path.startsWith('/map'))).toBe(true));
     await u.click(await screen.findByRole('button', { name: 'SIA Birojs, Brīvības 1, 1, Reception' }));
     expect(await screen.findByText('Filter left: 42 %')).toBeInTheDocument();
-    await u.click(screen.getByRole('textbox', { name: 'State' }));
-    await u.click(await screen.findByRole('option', { name: 'Fault', hidden: true }));
+    const states = screen.getByRole('group', { name: 'State' });
+    await u.click(within(states).getByRole('button', { name: 'Fault' }));
+    expect(within(states).getByRole('button', { name: 'Fault' })).toHaveAttribute('aria-pressed', 'true');
     await waitFor(() => expect(calls.some((c) => c.path.startsWith('/map') && c.path.includes('state=fault'))).toBe(true));
     await waitFor(() => expect(screen.queryByText('Filter left: 42 %')).toBeNull());
     await u.click(screen.getByRole('textbox', { name: 'Alert type' }));
     await u.click((await screen.findAllByRole('option', { name: 'Offline', hidden: true })).at(-1)!); // последний открытый список
     await u.type(screen.getByRole('textbox', { name: 'Filter left ≤ %' }), '5');
     await waitFor(() => expect(calls.some((c) => c.path.includes('alert_type=offline') && c.path.includes('filter_left_max_pct=5'))).toBe(true));
+  });
+});
+
+describe('карта по ссылке из карточки устройства', () => {
+  it('?lat&lng — карта открывается на точке крупным масштабом; кнопка в карточке ведёт туда', async () => {
+    const calls = fakeApi({ ...base('admin'), 'GET /map': () => ({ status: 200, body: { clusters: [], devices: [] } }),
+      'GET /devices/:id': () => ({ status: 200, body: { ...card, address_detail: { id: A2, client_id: C1, address: 'Brīvības 1', lat: 56.95, lng: 24.11 } } }),
+      'GET /devices/:id/history': () => ({ status: 200, body: page([]) }) });
+    renderAt(`/devices/${D1}`);
+    expect(await screen.findByRole('link', { name: 'Show on map' })).toHaveAttribute('href', '/map?lat=56.95&lng=24.11');
+    renderAt('/map?lat=56.95&lng=24.11');
+    await waitFor(() => expect(calls.some((c) => c.path.startsWith('/map?') && new URLSearchParams(c.path.split('?')[1]).get('zoom') === '17')).toBe(true));
+    // рамка — вокруг точки
+    const [w, so, e, n] = new URLSearchParams(calls.filter((c) => c.path.startsWith('/map?')).at(-1)!.path.split('?')[1]).get('bbox')!.split(',').map(Number);
+    expect(w! <= 24.11 && 24.11 <= e! && so! <= 56.95 && 56.95 <= n!).toBe(true);
+  });
+
+  it.each(['/map?lat=56.95', '/map?lat=56.95&lng=', '/map?lat=%20&lng=24', '/map?lat=95&lng=24', '/map?lat=abc&lng=24'])('%s — без точки: обзорный масштаб', async (url) => {
+    const calls = fakeApi({ ...base('admin'), 'GET /map': () => ({ status: 200, body: { clusters: [], devices: [] } }) });
+    renderAt(url);
+    await waitFor(() => expect(calls.some((c) => c.path.startsWith('/map?'))).toBe(true));
+    expect(new URLSearchParams(calls.find((c) => c.path.startsWith('/map?'))!.path.split('?')[1]).get('zoom')).toBe('7');
+  });
+
+  it('телефон: панель фильтров свёрнута, открывается и закрывается', async () => {
+    const prev = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ ...prev(q), matches: q.includes('max-width: 640px') })) as typeof window.matchMedia;
+    try {
+      fakeApi({ ...base('admin'), 'GET /map': () => ({ status: 200, body: { clusters: [], devices: [] } }) });
+      const u = userEvent.setup();
+      renderAt('/map');
+      await u.click(await screen.findByRole('button', { name: 'Filters' }));
+      expect(screen.getByRole('group', { name: 'State' })).toBeInTheDocument();
+      await u.click(screen.getByRole('button', { name: 'Hide filters' }));
+      expect(screen.queryByRole('group', { name: 'State' })).toBeNull();
+    } finally { window.matchMedia = prev; }
+  });
+});
+
+describe('строки таблиц', () => {
+  it('нажатие на строку — карточка устройства; ссылка клиента в строке — карточка клиента', async () => {
+    fakeApi({ ...base('admin'), 'GET /devices': () => ({ status: 200, body: page([listItem]) }), 'GET /devices/:id': () => ({ status: 200, body: card }),
+      'GET /devices/:id/history': () => ({ status: 200, body: page([]) }),
+      'GET /clients/:id': () => ({ status: 200, body: { ...client(C1, 'SIA Birojs'), addresses: [], contacts: [], devices: [] } }) });
+    const u = userEvent.setup();
+    renderAt('/devices');
+    const row = (await screen.findByRole('link', { name: 'SN-001' })).closest('tr')!;
+    await u.click(within(row).getByText('Offline'));
+    expect(await screen.findByRole('heading', { name: 'Identity' })).toBeInTheDocument();
+    await u.click(screen.getByRole('link', { name: '‹ Devices' })); // назад из карточки
+    const row2 = (await screen.findByRole('link', { name: 'SN-001' })).closest('tr')!;
+    expect(within(row2).getByRole('link', { name: 'SIA Birojs' })).toHaveAttribute('href', `/clients/${C1}`);
+    await u.click(within(row2).getByRole('link', { name: 'SIA Birojs' }));
+    expect(await screen.findByRole('heading', { name: 'Installation addresses' })).toBeInTheDocument();
   });
 });

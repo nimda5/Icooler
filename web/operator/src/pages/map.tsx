@@ -3,14 +3,16 @@
 // Подложка — тайлы VITE_MAP_TILES (по умолчанию OpenStreetMap; в облаке — Azure Maps с ключом с infra/core).
 import 'leaflet/dist/leaflet.css';
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import L from 'leaflet';
-import { Anchor, Badge, Box, Card, CloseButton, Group, NumberInput, Select, Stack, Text, TextInput, Title } from '@mantine/core';
+import { Anchor, Badge, Box, Button, Card, CloseButton, Group, NumberInput, Select, Stack, Text, TextInput, Title } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
+import { IconAdjustments, IconSearch } from '@tabler/icons-react';
+import { useMediaQuery } from '@mantine/hooks';
 import { api, ok, type Schemas } from '../api/client';
 import { t } from '../i18n';
 import { LoadError, PageTitle } from './common';
-import { ALERT_OPTS, STATE_OPTS } from './devices';
+import { ALERT_OPTS, STATE_DOT, STATE_OPTS } from './devices';
 import { useClientOptions } from './end-users';
 
 type MapView = Schemas['MapView'];
@@ -19,6 +21,7 @@ const COLOR: Record<string, string> = { green: '#2f9e44', grey: '#868e96', red: 
 const TILES = import.meta.env['VITE_MAP_TILES'] as string | undefined ?? 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 const ATTRIBUTION = import.meta.env['VITE_MAP_ATTRIBUTION'] as string | undefined ?? '© OpenStreetMap contributors';
 const START: [number, number] = [56.95, 24.1]; // Рига
+const LATVIA: L.LatLngBoundsExpression = [[55.65, 20.95], [58.1, 28.25]];
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 export interface View { bbox: string; zoom: number }
@@ -58,6 +61,7 @@ function bubble(count: number, byColor: Record<string, number>) {
 }
 
 export function MapPage() {
+  const location = useLocation();
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const layer = useRef<L.LayerGroup | null>(null);
@@ -69,10 +73,21 @@ export function MapPage() {
   const [alertType, setAlertType] = useState<string | null>(null);
   const [filterMax, setFilterMax] = useState<number | ''>('');
   const clients = useClientOptions();
+  // Телефон: панель фильтров свёрнута, чтобы не закрывать карту; открывается кнопкой.
+  const narrow = useMediaQuery('(max-width: 640px)') ?? false;
+  const [panel, setPanel] = useState<boolean | null>(null);
+  const panelOpen = panel ?? !narrow;
 
   useEffect(() => {
     if (!el.current) return;
-    const m = L.map(el.current, { center: START, zoom: 7 });
+    const p = new URLSearchParams(location.search);
+    const rawLat = p.get('lat')?.trim() ?? '', rawLng = p.get('lng')?.trim() ?? '';
+    const lat = Number(rawLat), lng = Number(rawLng);
+    const at = rawLat !== '' && rawLng !== '' && Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+    // Кнопки масштаба — внизу справа (сверху слева — панель фильтров); без точки — вся Латвия правее панели.
+    const m = L.map(el.current, { center: at ? [lat, lng] : START, zoom: at ? 17 : 7, zoomControl: false });
+    L.control.zoom({ position: 'bottomright' }).addTo(m);
+    if (!at && m.getSize().x > 400) m.fitBounds(LATVIA, { paddingTopLeft: [300, 10], paddingBottomRight: [10, 10] }); // узкий экран — просто Рига
     L.tileLayer(TILES, { attribution: ATTRIBUTION, maxZoom: 19 }).addTo(m);
     layer.current = L.layerGroup().addTo(m);
     const update = () => setView({ bbox: bboxOf(m.getBounds()), zoom: Math.round(m.getZoom()) });
@@ -93,6 +108,8 @@ export function MapPage() {
     queryKey: ['map', view, filters], enabled: !!view, placeholderData: (prev) => prev,
     queryFn: () => ok(api.GET('/map', { params: { query: { bbox: view!.bbox, zoom: view!.zoom, ...filters } as never } })),
   });
+
+  const inView = data.data ? data.data.clusters.reduce((n, c) => n + c.count, 0) + data.data.devices.length : null;
 
   useEffect(() => {
     const g = layer.current;
@@ -122,26 +139,42 @@ export function MapPage() {
   }, [data.data]);
 
   return (
-    <Stack>
-      <PageTitle>{t('map.title')}</PageTitle>
-      <Group>
-        <Select placeholder={t('devices.state')} aria-label={t('devices.state')} data={STATE_OPTS} value={state} onChange={setState} clearable />
-        <Select placeholder={t('devices.client')} aria-label={t('devices.client')} data={clients.data ?? []} value={clientId} onChange={setClientId} searchable clearable />
-        <TextInput placeholder={t('clients.region')} aria-label={t('clients.region')} value={region} onChange={(e) => setRegion(e.currentTarget.value)} />
-        <Select placeholder={t('devices.alertType')} aria-label={t('devices.alertType')} data={ALERT_OPTS} value={alertType} onChange={setAlertType} clearable />
-        <NumberInput placeholder={t('devices.filterMax')} aria-label={t('devices.filterMax')} min={0} max={100} w={150} value={filterMax}
-          onChange={(v) => setFilterMax(v === '' ? '' : Number(v))} />
-        <Group gap="xs">
-          {(['green', 'grey', 'yellow', 'red'] as const).map((c) => (
-            <Badge key={c} variant="dot" color={COLOR[c]}>{t(`map.legend.${c}`)}</Badge>
-          ))}
-        </Group>
-      </Group>
+    <Stack gap={0}>
+      <PageTitle sub={inView == null ? ' ' : `${inView} ${t('map.inView')}`}>{t('map.title')}</PageTitle>
       {data.isError && <LoadError error={data.error} retry={() => data.refetch()} />}
-      <Box pos="relative">
-        <div ref={el} data-testid="map" style={{ height: 'calc(100vh - 220px)', minHeight: 360, borderRadius: 8 }} />
+      {/* Свой контекст наложения: z-index слоёв Leaflet и панели (1000) не поднимается над выпадающими списками и меню */}
+      <Box pos="relative" style={{ isolation: 'isolate', zIndex: 0 }}>
+        <div ref={el} data-testid="map" className="ic-card" style={{ height: 'calc(100vh - 170px)', minHeight: 420, overflow: 'hidden' }} />
+        {!panelOpen && (
+          <Button variant="default" leftSection={<IconAdjustments size={16} />} onClick={() => setPanel(true)} pos="absolute" top={14} left={14} style={{ zIndex: 1000 }}>
+            {t('map.filters')}
+          </Button>
+        )}
+        {panelOpen && <div className="ic-glass" style={{ position: 'absolute', top: 14, left: 14, zIndex: 1000, width: 'min(290px, calc(100% - 28px))', padding: 12, maxHeight: 'calc(100% - 28px)', overflow: 'auto' }}>
+          <Stack gap="xs">
+            {narrow && <Group justify="space-between"><Text fw={600} size="sm">{t('map.filters')}</Text><CloseButton aria-label={t('map.hideFilters')} onClick={() => setPanel(false)} /></Group>}
+            <Select placeholder={t('map.findClient')} aria-label={t('devices.client')} data={clients.data ?? []} value={clientId} onChange={setClientId} searchable clearable
+              leftSection={<IconSearch size={15} />} />
+            <div className="ic-statelist" role="group" aria-label={t('devices.state')}>
+              {[{ v: null as string | null, label: t('map.allDevices'), dot: 'var(--text-3)' }, ...STATE_OPTS.map((o) => ({ v: o.value as string | null, label: o.label, dot: STATE_DOT[o.value]! }))].map((o) => (
+                <button key={o.label} type="button" aria-pressed={state === o.v} onClick={() => setState(o.v)}>
+                  <span className="dot" style={{ background: o.dot }} />{o.label}{o.v === null && inView != null && <span className="n">{inView}</span>}
+                </button>
+              ))}
+            </div>
+            <TextInput placeholder={t('devices.allRegions')} aria-label={t('clients.region')} value={region} onChange={(e) => setRegion(e.currentTarget.value)} />
+            <Select placeholder={t('devices.allAlerts')} aria-label={t('devices.alertType')} data={ALERT_OPTS} value={alertType} onChange={setAlertType} clearable />
+            <NumberInput placeholder={t('devices.filterMax')} aria-label={t('devices.filterMax')} min={0} max={100} value={filterMax}
+              onChange={(v) => setFilterMax(v === '' ? '' : Number(v))} />
+            <Group gap={10} px={4} className="ic-secondary">
+              {(['green', 'grey', 'yellow', 'red'] as const).map((c) => (
+                <Group key={c} gap={5}><span style={{ width: 8, height: 8, borderRadius: 8, background: COLOR[c] }} />{t(`map.legend.${c}`)}</Group>
+              ))}
+            </Group>
+          </Stack>
+        </div>}
         {selected && (
-          <Card withBorder shadow="md" pos="absolute" top={12} right={12} w={320} style={{ zIndex: 1000, maxHeight: '80%', overflow: 'auto' }}>
+          <Card className="ic-glass" pos="absolute" top={14} right={14} w={320} style={{ zIndex: 1000, maxHeight: 'calc(100% - 28px)', overflow: 'auto' }}>
             <Group justify="space-between" mb="xs" wrap="nowrap">
               <Title order={5}>{selected.length > 1 ? t('map.atAddress') : selected[0]!.client_name ?? '—'}</Title>
               <CloseButton aria-label={t('common.cancel')} onClick={() => setSelected(null)} />
@@ -164,7 +197,7 @@ export function MapPage() {
           </Card>
         )}
       </Box>
-      <Text size="xs" c="dimmed">{t('map.noCoords')}</Text>
+      <Text size="xs" c="dimmed" mt="xs">{t('map.noCoords')}</Text>
     </Stack>
   );
 }
