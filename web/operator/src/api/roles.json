@@ -1,0 +1,492 @@
+{
+  "acceptInvitation": [
+    "public"
+  ],
+  "acknowledgeAlert": [
+    "admin",
+    "tech",
+    "dispatcher"
+  ],
+  "assignAlert": [
+    "admin",
+    "tech",
+    "dispatcher"
+  ],
+  "bindEndUserClient": [
+    "admin",
+    "dispatcher"
+  ],
+  "bindEsimProfile": [
+    "admin"
+  ],
+  "blockDevice": [
+    "admin",
+    "tech"
+  ],
+  "blockEndUser": [
+    "admin",
+    "dispatcher"
+  ],
+  "blockUser": [
+    "admin"
+  ],
+  "changePassword": [
+    "any"
+  ],
+  "closeAlert": [
+    "admin",
+    "tech",
+    "dispatcher"
+  ],
+  "confirmEsimOperation": [
+    "admin"
+  ],
+  "createAddress": [
+    "admin",
+    "tech"
+  ],
+  "createClient": [
+    "admin",
+    "tech"
+  ],
+  "createContact": [
+    "admin",
+    "tech"
+  ],
+  "createDevice": [
+    "admin",
+    "tech"
+  ],
+  "createEsimOperation": [
+    "admin"
+  ],
+  "createEsimProfile": [
+    "admin"
+  ],
+  "createTenant": [
+    "sig_admin"
+  ],
+  "deleteAddress": [
+    "admin",
+    "tech"
+  ],
+  "deleteClient": [
+    "admin",
+    "tech"
+  ],
+  "deleteContact": [
+    "admin",
+    "tech"
+  ],
+  "deleteEndUser": [
+    "admin",
+    "dispatcher"
+  ],
+  "deleteUser": [
+    "admin"
+  ],
+  "euGetCommand": [
+    "end_user"
+  ],
+  "euGetConsumption": [
+    "end_user"
+  ],
+  "euGetDevice": [
+    "end_user"
+  ],
+  "euGetSchedule": [
+    "end_user"
+  ],
+  "euListAlerts": [
+    "end_user"
+  ],
+  "euListClients": [
+    "end_user"
+  ],
+  "euListDevices": [
+    "end_user"
+  ],
+  "euRequestData": [
+    "end_user"
+  ],
+  "euResetConsumption": [
+    "end_user"
+  ],
+  "euResetFilter": [
+    "end_user"
+  ],
+  "euSetCooling": [
+    "end_user"
+  ],
+  "euSetEnergySaving": [
+    "end_user"
+  ],
+  "euSetHeating": [
+    "end_user"
+  ],
+  "euSetPower": [
+    "end_user"
+  ],
+  "euSetSchedule": [
+    "end_user"
+  ],
+  "exportConsumption": [
+    "admin",
+    "tech",
+    "exec"
+  ],
+  "exportDevices": [
+    "admin",
+    "tech",
+    "exec"
+  ],
+  "forgotPassword": [
+    "public"
+  ],
+  "getAlert": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "getCertificate": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "getClient": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "getCommand": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "getConsumption": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "getDashboard": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "getDevice": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "getDeviceEsim": [
+    "admin",
+    "tech",
+    "dispatcher"
+  ],
+  "getDeviceHistory": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "getDeviceSettings": [
+    "admin"
+  ],
+  "getEndUser": [
+    "admin",
+    "dispatcher"
+  ],
+  "getEsimProfile": [
+    "admin",
+    "tech",
+    "dispatcher"
+  ],
+  "getFilter": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "getMap": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "getProfile": [
+    "any"
+  ],
+  "getSchedule": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "getSettings": [
+    "admin"
+  ],
+  "getTelemetry": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "getUser": [
+    "admin"
+  ],
+  "importDevices": [
+    "admin",
+    "tech"
+  ],
+  "importEsimProfiles": [
+    "admin"
+  ],
+  "inviteEndUser": [
+    "admin",
+    "dispatcher"
+  ],
+  "inviteUser": [
+    "admin"
+  ],
+  "issueCertificate": [
+    "admin",
+    "tech"
+  ],
+  "listAlerts": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "listAllPasteurizations": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "listAudit": [
+    "admin",
+    "exec"
+  ],
+  "listClients": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "listDeviceCommands": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "listDeviceErrors": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "listDeviceEvents": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "listDevices": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "listEndUsers": [
+    "admin",
+    "dispatcher"
+  ],
+  "listErrorCodes": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "listEsimProfiles": [
+    "admin",
+    "tech",
+    "dispatcher"
+  ],
+  "listNotifications": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "listPasteurizations": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "listResets": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "listScheduleVersions": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "listUpcomingFilters": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "listUsers": [
+    "admin"
+  ],
+  "login": [
+    "public"
+  ],
+  "logout": [
+    "any"
+  ],
+  "logoutAll": [
+    "any"
+  ],
+  "markNotificationsRead": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "reportConsumption": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "reportRanking": [
+    "admin",
+    "tech",
+    "exec",
+    "dispatcher"
+  ],
+  "requestData": [
+    "admin",
+    "tech",
+    "dispatcher"
+  ],
+  "resetConsumption": [
+    "admin",
+    "tech"
+  ],
+  "resetFilter": [
+    "admin",
+    "tech"
+  ],
+  "resetPassword": [
+    "public"
+  ],
+  "runSelftest": [
+    "admin",
+    "tech",
+    "dispatcher"
+  ],
+  "setCooling": [
+    "admin",
+    "tech"
+  ],
+  "setEnergySaving": [
+    "admin",
+    "tech"
+  ],
+  "setHeating": [
+    "admin",
+    "tech"
+  ],
+  "setLifecycle": [
+    "admin",
+    "tech"
+  ],
+  "setOtaAllowed": [
+    "admin"
+  ],
+  "setOwnership": [
+    "admin",
+    "tech"
+  ],
+  "setPower": [
+    "admin",
+    "tech"
+  ],
+  "setSchedule": [
+    "admin",
+    "tech"
+  ],
+  "transferDevice": [
+    "admin",
+    "tech"
+  ],
+  "unbindEndUserClient": [
+    "admin",
+    "dispatcher"
+  ],
+  "unbindEsimProfile": [
+    "admin"
+  ],
+  "unblockDevice": [
+    "admin",
+    "tech"
+  ],
+  "unblockEndUser": [
+    "admin",
+    "dispatcher"
+  ],
+  "unblockUser": [
+    "admin"
+  ],
+  "updateAddress": [
+    "admin",
+    "tech"
+  ],
+  "updateClient": [
+    "admin",
+    "tech"
+  ],
+  "updateContact": [
+    "admin",
+    "tech"
+  ],
+  "updateDevice": [
+    "admin",
+    "tech"
+  ],
+  "updateDeviceSettings": [
+    "admin"
+  ],
+  "updateEndUser": [
+    "admin",
+    "dispatcher"
+  ],
+  "updateEsimProfile": [
+    "admin"
+  ],
+  "updateProfile": [
+    "any"
+  ],
+  "updateSettings": [
+    "admin"
+  ],
+  "updateUser": [
+    "admin"
+  ]
+}
