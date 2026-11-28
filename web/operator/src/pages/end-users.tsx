@@ -1,9 +1,9 @@
 // Учётные записи End User (§7.5, Admin и Dispatcher): приглашение к клиенту, клиенты, блокировка, удаление.
 import { useState } from 'react';
-import { Alert, Badge, Button, Group, Modal, Select, Stack, Table, Text, TextInput } from '@mantine/core';
+import { Badge, Button, Group, Modal, Select, Stack, Table, Text, TextInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, ok, ApiError, type Schemas } from '../api/client';
+import { api, ok, type Schemas } from '../api/client';
 import { en, t, tx } from '../i18n';
 import { act, applyErrors, ConfirmButton, fmt, LoadError, notifyOk, PageTitle } from './common';
 import { STATUS_COLOR } from './users';
@@ -11,21 +11,19 @@ import { STATUS_COLOR } from './users';
 type EndUser = Schemas['EndUser'];
 const LANGS = Object.entries(en.languages).map(([value, label]) => ({ value, label }));
 
-/** Клиенты для выбора. Пока нет API клиентов (4.3) — пустой список и подсказка. */
-function useClients() {
+/** Клиенты для выбора (все страницы). */
+export function useClientOptions() {
   return useQuery({
     queryKey: ['clients', 'options'],
     queryFn: async () => {
-      try {
-        const all: { value: string; label: string }[] = [];
-        let cursor: string | undefined;
-        do {
-          const r = await ok(api.GET('/clients', { params: { query: { limit: 200, ...(cursor ? { cursor } : {}) } } }));
-          all.push(...(r.items ?? []).map((c) => ({ value: c.id, label: c.name })));
-          cursor = r.next_cursor ?? undefined;
-        } while (cursor);
-        return all;
-      } catch (e) { if (e instanceof ApiError && e.status === 404) return null; throw e; }
+      const all: { value: string; label: string }[] = [];
+      let cursor: string | undefined;
+      do {
+        const r = await ok(api.GET('/clients', { params: { query: { limit: 200, ...(cursor ? { cursor } : {}) } } }));
+        all.push(...(r.items ?? []).map((c) => ({ value: c.id, label: c.name })));
+        cursor = r.next_cursor ?? undefined;
+      } while (cursor);
+      return all;
     },
   });
 }
@@ -99,7 +97,7 @@ export function EndUsersPage() {
 }
 
 function InviteModal({ opened, onClose, onDone }: { opened: boolean; onClose: () => void; onDone: () => unknown }) {
-  const clients = useClients();
+  const clients = useClientOptions();
   const form = useForm({ initialValues: { email: '', name: '', client_id: '', language: 'en' } });
   return (
     <Modal opened={opened} onClose={onClose} title={t('endUsers.invite')} centered>
@@ -111,12 +109,11 @@ function InviteModal({ opened, onClose, onDone }: { opened: boolean; onClose: ()
       })}>
         <Stack>
           {clients.isError && <LoadError error={clients.error} retry={() => clients.refetch()} />}
-          {clients.data === null && <Alert color="gray">{t('endUsers.noClients')}</Alert>}
           <TextInput label={t('common.email')} type="email" required {...form.getInputProps('email')} />
           <TextInput label={t('common.name')} required {...form.getInputProps('name')} />
-          <Select label={t('endUsers.client')} data={clients.data ?? []} searchable required disabled={!clients.data} {...form.getInputProps('client_id')} />
+          <Select label={t('endUsers.client')} data={clients.data ?? []} searchable required {...form.getInputProps('client_id')} />
           <Select label={t('common.language')} data={LANGS} allowDeselect={false} {...form.getInputProps('language')} />
-          <Group justify="flex-end"><Button type="submit" loading={form.submitting} disabled={!clients.data}>{t('endUsers.invite')}</Button></Group>
+          <Group justify="flex-end"><Button type="submit" loading={form.submitting}>{t('endUsers.invite')}</Button></Group>
         </Stack>
       </form>
     </Modal>
@@ -124,7 +121,7 @@ function InviteModal({ opened, onClose, onDone }: { opened: boolean; onClose: ()
 }
 
 function ClientsModal({ user, onClose, onDone }: { user: EndUser; onClose: () => void; onDone: () => unknown }) {
-  const clients = useClients();
+  const clients = useClientOptions();
   const [add, setAdd] = useState<string | null>(null);
   const bound = new Set(user.clients.map((c) => c.client_id));
   return (
@@ -146,7 +143,7 @@ function ClientsModal({ user, onClose, onDone }: { user: EndUser; onClose: () =>
           </Table.Tbody>
         </Table>
         {clients.isError && <LoadError error={clients.error} retry={() => clients.refetch()} />}
-        {clients.data === null ? <Alert color="gray">{t('endUsers.noClients')}</Alert> : clients.isError ? null : (
+        {clients.isError ? null : (
           <Group align="flex-end">
             <Select label={t('endUsers.bind')} data={(clients.data ?? []).filter((c) => !bound.has(c.value))} value={add} onChange={setAdd} searchable style={{ flex: 1 }} />
             <Button disabled={!add} onClick={act(async () => {

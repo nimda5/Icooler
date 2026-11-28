@@ -12,9 +12,12 @@ import { AuditPage } from './pages/audit';
 import { SettingsPage } from './pages/settings';
 import { TenantsPage } from './pages/tenants';
 import { ComingSoon, NotFound } from './pages/misc';
+import { DevicesPage, DevicePage } from './pages/devices';
+import { ClientsPage, ClientPage } from './pages/clients';
+import { MapPage } from './pages/map';
 
 const PAGES: Record<string, () => React.JSX.Element> = {
-  users: UsersPage, 'end-users': EndUsersPage, audit: AuditPage, settings: SettingsPage, tenants: TenantsPage,
+  users: UsersPage, 'end-users': EndUsersPage, devices: DevicesPage, clients: ClientsPage, map: MapPage, audit: AuditPage, settings: SettingsPage, tenants: TenantsPage,
 };
 
 function Protected({ children }: { children: React.ReactNode }) {
@@ -49,6 +52,8 @@ export function App() {
               element={!can(role, s.op) ? <NotFound /> : Page ? <Page /> : <ComingSoon title={s.label} />} />
           );
         })}
+        <Route path="devices/:id" element={can(role, 'getDevice') ? <DevicePage /> : <NotFound />} />
+        <Route path="clients/:id" element={can(role, 'getClient') ? <ClientPage /> : <NotFound />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

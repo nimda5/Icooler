@@ -31,7 +31,7 @@ export const en = {
   },
   endUsers: {
     title: 'End users', invite: 'Invite end user', client: 'Client', clients: 'Clients', bind: 'Add client', unbind: 'Remove',
-    noClients: 'Clients will be available when the clients section is released.', confirmUnbind: 'Remove access to this client? The end user is signed out.',
+    confirmUnbind: 'Remove access to this client? The end user is signed out.',
   },
   audit: { title: 'Audit log', action: 'Action', object: 'Object', user: 'User', from: 'From', to: 'To', at: 'Time', ip: 'IP', details: 'Changes', empty: 'No entries' },
   settings: {
@@ -45,6 +45,34 @@ export const en = {
       filter_forecast_window_days: 'Forecast: average daily use over, days',
     },
   },
+  clients: {
+    title: 'Clients', create: 'New client', type: 'Type', types: { organization: 'Organization', person: 'Person' }, regNumber: 'Registration number',
+    legalAddress: 'Legal address', region: 'Region', devices: 'Coolers', alerts: 'Open alerts', addresses: 'Installation addresses',
+    contacts: 'Contacts', addAddress: 'Add address', addContact: 'Add contact', address: 'Address', floor: 'Floor', place: 'Place',
+    placeHint: 'Where exactly the cooler stands (P-05)', accessNote: 'Access note', coords: 'Coordinates', lat: 'Latitude', lng: 'Longitude',
+    coordsHint: 'Leave empty to find by address', coordsSource: { geocoded: 'found by address', manual: 'set manually' }, noCoords: 'not found — set manually',
+    phone: 'Phone', contactRole: 'Position', comment: 'Comment', confirmDelete: 'Delete this client with its addresses and contacts?',
+    confirmDeleteAddress: 'Delete this address?', confirmDeleteContact: 'Delete this contact?', empty: 'No clients',
+  },
+  devices: {
+    title: 'Devices', create: 'New device', serial: 'Serial number', deviceId: 'Device ID', imei: 'IMEI', model: 'Model', hw: 'Hardware revision',
+    fw: 'Firmware', description: 'Description', client: 'Client', address: 'Address', lifecycle: 'Lifecycle', state: 'State', ownership: 'Ownership',
+    lastSeen: 'Last seen', filter: 'Filter left', alerts: 'Alerts', waterSource: 'Water source', variant: 'Version', carbonated: 'Carbonated', sku: 'SKU',
+    sort: 'Sort', sorts: { '-created_at': 'Newest first', created_at: 'Oldest first', serial: 'Serial number', device_id: 'Device ID', client_name: 'Client' },
+    lifecycles: { stock: 'Stock', active: 'Active', installed: 'Installed', maintenance: 'Maintenance', disabled: 'Disabled', decommissioned: 'Decommissioned', reassigned: 'Reassigned' },
+    states: { operational: 'Operational', warning: 'Warning', fault: 'Fault', offline: 'Offline' },
+    ownerships: { rent: 'Rent', purchase: 'Purchase' },
+    waterSources: { bottle_top: 'Bottle on top', bottle_bottom: 'Bottle below', mains: 'Mains water' },
+    variants: { A: 'A', S: 'S' }, yes: 'yes', no: 'no',
+    transfer: 'Move', transferTitle: 'Move to client and address', stock: 'No client (stock)', changeLifecycle: 'Change lifecycle',
+    changeOwnership: 'Change ownership', history: 'History', historyEmpty: 'No changes yet', at: 'Time', by: 'By', field: 'Change', before: 'Before', after: 'After',
+    fields: { client: 'Client', address: 'Address', lifecycle: 'Lifecycle', ownership: 'Ownership' },
+    neverSeen: 'Has not connected yet', liveNote: 'State, firmware, filter and alerts come from the device once it connects.',
+    blocked: 'Access revoked', empty: 'No devices', identity: 'Identity', placement: 'Placement', liters: 'Litres (period)',
+    alertType: 'Alert type', filterMax: 'Filter left ≤ %', addressesError: 'Could not load the client’s addresses',
+    alertTypes: { offline: 'Offline', filter_low: 'Filter low', filter_expired: 'Filter expired', error_code: 'Error code', temperature: 'Temperature', no_water: 'No water', pasteurization: 'Pasteurization' },
+  },
+  map: { title: 'Map', legend: { green: 'Online', grey: 'Offline', yellow: 'Warning', red: 'Alert' }, zoomIn: 'Zoom in', atAddress: 'Coolers at this address', open: 'Open device', noCoords: 'Devices whose address has no coordinates are not shown.' },
 } as const;
 
 export type Dict = typeof en;
