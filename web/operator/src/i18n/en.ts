@@ -73,8 +73,16 @@ export const en = {
     allOwnership: 'Rental & purchased', allRegions: 'All regions', allLifecycles: 'Any lifecycle', allAlerts: 'Any alert',
     showOnMap: 'Show on map', connectivity: 'Connectivity', online: 'Online', offline: 'Offline', signal: 'Signal (RSRP)', carrier: 'Carrier',
     kpi: { cold: 'Cold water', hot: 'Hot water', water: 'Water total', filter: 'Filter remaining', setpoint: 'Setpoint', waterFoot: 'Counter of the device', noData: 'No data yet' },
+    allFirmware: 'Any firmware', allEsim: 'Any eSIM status', esim: 'eSIM status',
+    esimStatuses: { inventory: 'Inventory', active: 'Active', suspended: 'Suspended', closed: 'Closed' },
     alertType: 'Alert type', filterMax: 'Filter left ≤ %', addressesError: 'Could not load the client’s addresses',
     alertTypes: { offline: 'Offline', filter_low: 'Filter low', filter_expired: 'Filter expired', error_code: 'Error code', temperature: 'Temperature', no_water: 'No water', pasteurization: 'Pasteurization' },
+  },
+  io: {
+    export: 'Export', import: 'Import', importTitle: 'Import devices from CSV', check: 'Check', file: 'CSV file', choose: 'Choose file…',
+    importHint: 'UTF-8 CSV, comma or semicolon, first row — column names. Rows with errors are skipped; check first to see the report without saving.',
+    template: 'Download template', checkResult: 'Check result', importResult: 'Import result', wouldAccept: 'Will be imported',
+    accepted: 'Imported', rejected: 'with errors', imported: 'Devices imported', row: 'Row', column: 'Column', error: 'Error',
   },
   map: { title: 'Fleet map', filters: 'Filters', hideFilters: 'Hide filters', inView: 'devices in view', findClient: 'Find client', allDevices: 'All devices', legend: { green: 'Online', grey: 'Offline', yellow: 'Warning', red: 'Alert' }, zoomIn: 'Zoom in', atAddress: 'Coolers at this address', open: 'Open device', noCoords: 'Devices whose address has no coordinates are not shown.' },
 } as const;

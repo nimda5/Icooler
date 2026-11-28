@@ -8,22 +8,13 @@ import { Db } from '../db/db.service.ts';
 import type { RequestContext } from '../auth/context.ts';
 import { audit } from '../audit.ts';
 import { cursorTs, decodeCursor, encodeCursor, UUID } from './accounts.ts';
-import { TELEMETRY, liveFilterPasses, type LiveFilter, type TelemetrySource } from '../telemetry.ts';
-import { DEVICE_COLS, DEVICE_LIST_COLS, DEVICE_LIST_FROM, deviceListItems, deviceOut } from './devices.shared.ts';
+import { TELEMETRY, type TelemetrySource } from '../telemetry.ts';
+import { DEVICE_COLS, DEVICE_LIST_COLS, DEVICE_LIST_FROM, deviceFilters, deviceListItems, deviceOut, parseSort, type Q } from './devices.shared.ts';
 import { text } from './clients.controller.ts';
 import { ADDRESS_COLS, addressOut, CLIENT_COLS, clientOut } from './clients.shared.ts';
 
 type Model = { water_source: string; variant: string; carbonated: boolean; sku?: string | null };
-type Q = Record<string, string | number | undefined>;
 const bad = (path: string, message: string) => new Problem(422, message, { errors: [{ path, message }] });
-
-/** Сортировка списка: поле → выражение; курсор — значение поля и id. */
-const SORTS: Record<string, { expr: string; type: 'text' | 'timestamptz' }> = {
-  created_at: { expr: 'd.created_at', type: 'timestamptz' },
-  serial: { expr: 'd.serial', type: 'text' },
-  device_id: { expr: 'd.device_id', type: 'text' },
-  client_name: { expr: "coalesce(cl.name, '')", type: 'text' },
-};
 
 /**
  * Курсор списка устройств: [поле сортировки, id последней строки] — короткий при любой длине значений
@@ -58,45 +49,16 @@ export class DevicesController {
       [ctx.tenantId, deviceId, ctx.userId, field, JSON.stringify(before), JSON.stringify(after), comment ?? null]);
   }
 
-  /** Фильтры реестра — в SQL; фильтры по состоянию от телеметрии — через источник (telemetry.ts). */
-  async #filters(q: Q, args: unknown[]): Promise<string[] | null> {
-    const arg = (v: unknown) => { args.push(v); return `$${args.length}`; };
-    const where = ['d.deleted_at is null'];
-    const live: LiveFilter = {
-      ...(q['state'] ? { state: String(q['state']) } : {}), ...(q['alert_type'] ? { alert_type: String(q['alert_type']) } : {}),
-      ...(q['filter_left_max_pct'] !== undefined ? { filter_left_max_pct: Number(q['filter_left_max_pct']) } : {}), ...(q['fw'] ? { fw: String(q['fw']) } : {}),
-    };
-    if (Object.keys(live).length && !(await liveFilterPasses(this.telemetry, live))) return null; // никто не подходит
-    if (q['q']) {
-      const p = arg(`%${q['q']}%`);
-      where.push(`(d.device_id ilike ${p} or d.serial ilike ${p} or d.imei ilike ${p} or cl.name ilike ${p} or a.address ilike ${p})`);
-    }
-    if (q['lifecycle']) where.push(`d.lifecycle = ${arg(q['lifecycle'])}::app.lifecycle`);
-    if (q['client_id']) where.push(`d.client_id = ${arg(q['client_id'])}::uuid`);
-    if (q['region']) where.push(`a.region = ${arg(q['region'])}`);
-    if (q['ownership']) where.push(`d.ownership = ${arg(q['ownership'])}::app.ownership`);
-    if (q['model']) {
-      const p = arg(q['model']);
-      where.push(`(d.sku = ${p} or d.water_source::text = ${p})`);
-    }
-    if (q['esim_status']) where.push(`exists (select 1 from app.esim_profile e where e.id = d.esim_profile_id and e.deleted_at is null and e.status = ${arg(q['esim_status'])}::app.esim_status)`);
-    return where;
-  }
-
   // ---------------------------------------------------------------- список и карточка
 
   @Op('listDevices', 200)
   list(@Ctx() ctx: RequestContext, @Query() q: Q) {
     const limit = Number(q['limit'] ?? 50);
-    const sortArg = String(q['sort'] ?? '-created_at');
-    const desc = sortArg.startsWith('-');
-    const field = desc ? sortArg.slice(1) : sortArg;
-    if (!Object.hasOwn(SORTS, field)) throw bad('/sort', `сортировка: ${Object.keys(SORTS).join(', ')}`);
-    const sort = SORTS[field]!;
+    const { field, desc, sort } = parseSort(q);
     const cur = decodeSortCursor(q['cursor'] as string | undefined, field);
     return this.db.tx({ tenantId: ctx.tenantId }, async (c) => {
       const args: unknown[] = [];
-      const where = await this.#filters(q, args);
+      const where = await deviceFilters(this.telemetry, q, args);
       if (!where) return { items: [], next_cursor: null };
       let anchor = '';
       if (cur) {
@@ -264,7 +226,7 @@ export class DevicesController {
     // Ячейки и раскрытые маркеры — в одном снимке: перенос устройства между запросами не даст точку вне рамки.
     return this.db.tx({ tenantId: ctx.tenantId, snapshot: true }, async (c) => {
       const args: unknown[] = [];
-      const where = await this.#filters({ ...q, q: undefined }, args);
+      const where = await deviceFilters(this.telemetry, { ...q, q: undefined }, args);
       if (!where) return { clusters: [], devices: [] };
       args.push(minLng, minLat, maxLng, maxLat, cell);
       const n = args.length;

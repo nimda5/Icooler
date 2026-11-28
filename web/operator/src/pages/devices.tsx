@@ -7,7 +7,7 @@ import {
   Alert, Anchor, Badge, Button, Card, Checkbox, Group, Modal, NumberInput, Select, SimpleGrid, Stack, Table, Text, Textarea, TextInput, Title,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { IconArrowsSort, IconDroplet, IconFilter, IconFlame, IconMapPin, IconPencil, IconPlus, IconSearch, IconSnowflake } from '@tabler/icons-react';
+import { IconArrowsSort, IconDroplet, IconFilter, IconFlame, IconMapPin, IconPencil, IconPlus, IconSearch, IconSnowflake, IconUpload } from '@tabler/icons-react';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, ok, type Schemas } from '../api/client';
 import { useSession } from '../auth/session';
@@ -15,6 +15,7 @@ import { can } from '../api/roles';
 import { en, t, tx } from '../i18n';
 import { applyErrors, fmt, LoadError, notifyOk, PageTitle } from './common';
 import { NotFound } from './misc';
+import { ExportMenu, ImportModal } from './device-io';
 import { useClientOptions } from './end-users';
 
 type Device = Schemas['Device'];
@@ -31,6 +32,7 @@ export const OWNERSHIP_OPTS = opts(en.devices.ownerships);
 const WATER_OPTS = opts(en.devices.waterSources);
 const SORT_OPTS = opts(en.devices.sorts);
 export const ALERT_OPTS = opts(en.devices.alertTypes);
+const ESIM_OPTS = opts(en.devices.esimStatuses);
 const STATE_CLASS: Record<string, string> = { operational: 'ok', warning: 'warn', fault: 'crit', offline: 'off' };
 export const STATE_DOT: Record<string, string> = { operational: 'var(--ok)', warning: 'var(--warn)', fault: 'var(--crit)', offline: 'var(--off)' };
 
@@ -69,7 +71,7 @@ export function DeviceTable({ items, showClient = true }: { items: ListItem[]; s
             <Table.Tr key={d.id} data-href={`/devices/${d.id}`} onClick={(e) => { if (!(e.target as HTMLElement).closest('a')) void navigate(`/devices/${d.id}`); }}>
               <Table.Td style={{ minWidth: 230 }}>
                 <div className="ic-primary">
-                  {showClient && d.client_id ? <Anchor component={Link} to={`/clients/${d.client_id}`} c="inherit" fw={600}>{d.client_name}</Anchor>
+                  {showClient && d.client_id ? <Anchor component={Link} to={`/clients/${d.client_id}`} c="inherit" fw={600} fz="inherit">{d.client_name}</Anchor>
                     : showClient ? t('devices.stock') : spotOf(d)}
                 </div>
                 <div className="ic-secondary">
@@ -104,6 +106,7 @@ export function DevicesPage() {
   const [q, setQ] = useState('');
   const [f, setF] = useState<Record<string, string | null>>({ sort: '-created_at' });
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
   const set = (k: string) => (v: string | null) => setF((x) => ({ ...x, [k]: v }));
   const query = Object.fromEntries(Object.entries({ ...f, q: q.trim() }).filter(([, v]) => v));
   const list = useInfiniteQuery({
@@ -118,7 +121,11 @@ export function DevicesPage() {
   return (
     <Stack gap={0}>
       <PageTitle sub={list.isSuccess ? `${items.length}${list.hasNextPage ? '+' : ''} ${t('devices.shown')}` : ' '}
-        right={can(role, 'createDevice') && <Button leftSection={<IconPlus size={16} />} onClick={() => setCreating(true)}>{t('devices.create')}</Button>}>
+        right={<Group gap="xs">
+          {can(role, 'exportDevices') && <ExportMenu query={query as Record<string, string>} />}
+          {can(role, 'importDevices') && <Button variant="default" leftSection={<IconUpload size={16} />} onClick={() => setImporting(true)}>{t('io.import')}</Button>}
+          {can(role, 'createDevice') && <Button leftSection={<IconPlus size={16} />} onClick={() => setCreating(true)}>{t('devices.create')}</Button>}
+        </Group>}>
         {t('devices.title')}
       </PageTitle>
       <div className="ic-card">
@@ -136,6 +143,8 @@ export function DevicesPage() {
             <Select placeholder={t('devices.allAlerts')} aria-label={t('devices.alertType')} data={ALERT_OPTS} value={f['alert_type'] ?? null} onChange={set('alert_type')} clearable w={170} />
             <NumberInput placeholder={t('devices.filterMax')} aria-label={t('devices.filterMax')} min={0} max={100} w={150} value={f['filter_left_max_pct'] ?? ''}
               onChange={(v) => set('filter_left_max_pct')(v === '' ? null : String(v))} />
+            <TextInput placeholder={t('devices.allFirmware')} aria-label={t('devices.fw')} value={f['fw'] ?? ''} onChange={(e) => set('fw')(e.currentTarget.value.trim() || null)} w={150} />
+            <Select placeholder={t('devices.allEsim')} aria-label={t('devices.esim')} data={ESIM_OPTS} value={f['esim_status'] ?? null} onChange={set('esim_status')} clearable w={160} />
             <Select aria-label={t('devices.sort')} leftSection={<IconArrowsSort size={16} />} data={SORT_OPTS} value={f['sort'] ?? '-created_at'} onChange={set('sort')} allowDeselect={false} w={190} />
           </Group>
           <div className="ic-chips" role="group" aria-label={t('devices.state')}>
@@ -156,6 +165,7 @@ export function DevicesPage() {
         </Stack>
       </div>
       {creating && <DeviceModal onClose={() => setCreating(false)} onDone={() => qc.invalidateQueries({ queryKey: ['devices'] })} />}
+      {importing && <ImportModal onClose={() => setImporting(false)} onDone={() => qc.invalidateQueries({ queryKey: ['devices'] })} />}
     </Stack>
   );
 }
