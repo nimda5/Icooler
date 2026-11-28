@@ -1,12 +1,13 @@
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
 import type { ReactNode } from 'react';
-import { MantineProvider, createTheme } from '@mantine/core';
+import { MantineProvider } from '@mantine/core';
+import './theme.css';
+import { theme } from './theme';
 import { Notifications } from '@mantine/notifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SessionProvider } from './auth/session';
 
-const theme = createTheme({ primaryColor: 'cyan', defaultRadius: 'md' });
 
 export function makeQueryClient(): QueryClient {
   return new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });

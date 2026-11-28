@@ -469,3 +469,15 @@ describe('настройки: ввод и очередь', () => {
     await waitFor(() => expect(screen.getAllByRole('button', { name: 'Reset to inherited' }).every((x) => !x.hasAttribute('disabled'))).toBe(true));
   });
 });
+
+describe('тема', () => {
+  it('переключатель светлой и тёмной темы', async () => {
+    fakeApi({ 'GET /me': () => ({ status: 200, body: profile('admin') }), 'GET /users': () => ({ status: 200, body: page([]) }) });
+    const u = userEvent.setup();
+    renderAt('/profile');
+    await u.click(await screen.findByRole('button', { name: 'Dark theme' }));
+    expect(document.documentElement).toHaveAttribute('data-mantine-color-scheme', 'dark');
+    await u.click(screen.getByRole('button', { name: 'Light theme' }));
+    expect(document.documentElement).toHaveAttribute('data-mantine-color-scheme', 'light');
+  });
+});

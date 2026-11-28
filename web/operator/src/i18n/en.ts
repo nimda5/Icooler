@@ -4,7 +4,7 @@ export const en = {
   nav: {
     dashboard: 'Dashboard', devices: 'Devices', map: 'Map', clients: 'Clients', alerts: 'Alerts', reports: 'Reports',
     esim: 'eSIM', users: 'Users', endUsers: 'End users', audit: 'Audit log', settings: 'Settings', profile: 'Profile',
-    tenants: 'Tenants', logout: 'Log out',
+    tenants: 'Tenants', logout: 'Log out', light: 'Light theme', dark: 'Dark theme', groups: { fleet: 'Fleet', admin: 'Administration' },
   },
   common: {
     save: 'Save', cancel: 'Cancel', confirm: 'Confirm', delete: 'Delete', block: 'Block', unblock: 'Unblock', edit: 'Edit',
@@ -46,7 +46,7 @@ export const en = {
     },
   },
   clients: {
-    title: 'Clients', create: 'New client', type: 'Type', types: { organization: 'Organization', person: 'Person' }, regNumber: 'Registration number',
+    title: 'Clients', client: 'Client', shown: 'shown', searchHint: 'Search name or registration number…', create: 'New client', type: 'Type', types: { organization: 'Organization', person: 'Person' }, regNumber: 'Registration number',
     legalAddress: 'Legal address', region: 'Region', devices: 'Coolers', alerts: 'Open alerts', addresses: 'Installation addresses',
     contacts: 'Contacts', addAddress: 'Add address', addContact: 'Add contact', address: 'Address', floor: 'Floor', place: 'Place',
     placeHint: 'Where exactly the cooler stands (P-05)', accessNote: 'Access note', coords: 'Coordinates', lat: 'Latitude', lng: 'Longitude',
@@ -69,10 +69,14 @@ export const en = {
     fields: { client: 'Client', address: 'Address', lifecycle: 'Lifecycle', ownership: 'Ownership' },
     neverSeen: 'Has not connected yet', liveNote: 'State, firmware, filter and alerts come from the device once it connects.',
     blocked: 'Access revoked', empty: 'No devices', identity: 'Identity', placement: 'Placement', liters: 'Litres (period)',
+    device: 'Device', shown: 'shown', searchHint: 'Search serial, Device ID, client, address…', allClients: 'All clients', allModels: 'All models',
+    allOwnership: 'Rental & purchased', allRegions: 'All regions', allLifecycles: 'Any lifecycle', allAlerts: 'Any alert',
+    showOnMap: 'Show on map', connectivity: 'Connectivity', online: 'Online', offline: 'Offline', signal: 'Signal (RSRP)', carrier: 'Carrier',
+    kpi: { cold: 'Cold water', hot: 'Hot water', water: 'Water total', filter: 'Filter remaining', setpoint: 'Setpoint', waterFoot: 'Counter of the device', noData: 'No data yet' },
     alertType: 'Alert type', filterMax: 'Filter left ≤ %', addressesError: 'Could not load the client’s addresses',
     alertTypes: { offline: 'Offline', filter_low: 'Filter low', filter_expired: 'Filter expired', error_code: 'Error code', temperature: 'Temperature', no_water: 'No water', pasteurization: 'Pasteurization' },
   },
-  map: { title: 'Map', legend: { green: 'Online', grey: 'Offline', yellow: 'Warning', red: 'Alert' }, zoomIn: 'Zoom in', atAddress: 'Coolers at this address', open: 'Open device', noCoords: 'Devices whose address has no coordinates are not shown.' },
+  map: { title: 'Fleet map', filters: 'Filters', hideFilters: 'Hide filters', inView: 'devices in view', findClient: 'Find client', allDevices: 'All devices', legend: { green: 'Online', grey: 'Offline', yellow: 'Warning', red: 'Alert' }, zoomIn: 'Zoom in', atAddress: 'Coolers at this address', open: 'Open device', noCoords: 'Devices whose address has no coordinates are not shown.' },
 } as const;
 
 export type Dict = typeof en;

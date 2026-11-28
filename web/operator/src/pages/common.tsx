@@ -39,12 +39,21 @@ export const act = (fn: () => Promise<unknown>) => () => { fn().catch(notifyErro
 
 export const fmt = (iso: string | null | undefined): string => (iso ? new Date(iso).toLocaleString() : t('common.never'));
 
-export function PageTitle({ children, right }: { children: ReactNode; right?: ReactNode }) {
+/** Заголовок страницы как в демо: надзаголовок, крупное название, подзаголовок; действия справа. */
+export function PageTitle({ children, right, sub, eyebrow, back }:
+  { children: ReactNode; right?: ReactNode; sub?: ReactNode; eyebrow?: ReactNode; back?: ReactNode }) {
   return (
-    <Group justify="space-between" mb="md" wrap="wrap">
-      <Title order={2}>{children}</Title>
-      {right}
-    </Group>
+    <Stack gap={0} mt={6} mb="lg">
+      {back}
+      <Group justify="space-between" align="flex-end" wrap="wrap" gap="md">
+        <div>
+          {eyebrow && <div className="ic-eyebrow">{eyebrow}</div>}
+          <Title order={2} className="ic-page-title">{children}</Title>
+          {sub && <div className="ic-page-sub">{sub}</div>}
+        </div>
+        {right}
+      </Group>
+    </Stack>
   );
 }
 

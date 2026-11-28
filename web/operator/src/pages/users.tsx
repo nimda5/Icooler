@@ -44,8 +44,8 @@ export function UsersPage() {
         <Select placeholder={t('users.filterRole')} data={ROLE_OPTS} value={role} onChange={setRole} clearable aria-label={t('users.filterRole')} />
         <Select placeholder={t('users.filterStatus')} data={STATUS_OPTS} value={status} onChange={setStatus} clearable aria-label={t('users.filterStatus')} />
       </Group>
-      <Table.ScrollContainer minWidth={720}>
-        <Table striped highlightOnHover>
+      <div className="ic-card" style={{ padding: '4px 6px' }}><Table.ScrollContainer minWidth={720}>
+        <Table>
           <Table.Thead>
             <Table.Tr>
               <Table.Th>{t('common.name')}</Table.Th><Table.Th>{t('common.email')}</Table.Th><Table.Th>{t('common.role')}</Table.Th>
@@ -86,7 +86,7 @@ export function UsersPage() {
             })}
           </Table.Tbody>
         </Table>
-      </Table.ScrollContainer>
+      </Table.ScrollContainer></div>
       {list.isError && !list.isFetchNextPageError && <LoadError error={list.error} retry={() => list.refetch()} />}
       {list.isFetchNextPageError && <LoadError error={list.error} retry={() => list.fetchNextPage()} />}
       {list.isPending && <Text c="dimmed">{t('common.loading')}</Text>}

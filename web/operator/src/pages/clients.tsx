@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Anchor, Badge, Button, Card, Group, Modal, NumberInput, Select, SimpleGrid, Stack, Table, Text, Textarea, TextInput, Title } from '@mantine/core';
 import { useForm } from '@mantine/form';
+import { IconPlus, IconSearch } from '@tabler/icons-react';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, ok, type Schemas } from '../api/client';
 import { useSession } from '../auth/session';
@@ -20,6 +21,7 @@ const TYPE_OPTS = Object.entries(en.clients.types).map(([value, label]) => ({ va
 
 export function ClientsPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const { role } = useSession();
   const [q, setQ] = useState('');
   const [region, setRegion] = useState('');
@@ -33,38 +35,46 @@ export function ClientsPage() {
   });
   const items = list.data?.pages.flatMap((p) => p.items ?? []) ?? [];
   return (
-    <Stack>
-      <PageTitle right={can(role, 'createClient') && <Button onClick={() => setCreating(true)}>{t('clients.create')}</Button>}>{t('clients.title')}</PageTitle>
-      <Group>
-        <TextInput placeholder={t('common.search')} aria-label={t('common.search')} value={q} onChange={(e) => setQ(e.currentTarget.value)} />
-        <TextInput placeholder={t('clients.region')} aria-label={t('clients.region')} value={region} onChange={(e) => setRegion(e.currentTarget.value)} />
+    <Stack gap={0}>
+      <PageTitle sub={list.isSuccess ? `${items.length}${list.hasNextPage ? '+' : ''} ${t('clients.shown')}` : ' '}
+        right={can(role, 'createClient') && <Button leftSection={<IconPlus size={16} />} onClick={() => setCreating(true)}>{t('clients.create')}</Button>}>{t('clients.title')}</PageTitle>
+      <div className="ic-card">
+      <Group p="md" gap="sm">
+        <TextInput placeholder={t('clients.searchHint')} aria-label={t('common.search')} leftSection={<IconSearch size={16} />} value={q} onChange={(e) => setQ(e.currentTarget.value)} style={{ flex: '1 1 280px' }} />
+        <TextInput placeholder={t('devices.allRegions')} aria-label={t('clients.region')} value={region} onChange={(e) => setRegion(e.currentTarget.value)} w={180} />
       </Group>
       <Table.ScrollContainer minWidth={640}>
-        <Table striped highlightOnHover>
+        <Table>
           <Table.Thead>
             <Table.Tr>
-              <Table.Th>{t('common.name')}</Table.Th><Table.Th>{t('clients.type')}</Table.Th><Table.Th>{t('clients.regNumber')}</Table.Th>
+              <Table.Th>{t('clients.client')}</Table.Th><Table.Th>{t('clients.regNumber')}</Table.Th><Table.Th>{t('clients.legalAddress')}</Table.Th>
               <Table.Th>{t('clients.devices')}</Table.Th><Table.Th>{t('clients.alerts')}</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
             {items.map((c) => (
-              <Table.Tr key={c.id}>
-                <Table.Td><Anchor component={Link} to={`/clients/${c.id}`}>{c.name}</Anchor></Table.Td>
-                <Table.Td>{tx(en.clients.types, c.type)}</Table.Td>
-                <Table.Td>{c.reg_number ?? '—'}</Table.Td>
-                <Table.Td>{c.devices_total ?? 0}</Table.Td>
-                <Table.Td>{c.alerts_open ? <Badge color="red" variant="light">{c.alerts_open}</Badge> : '0'}</Table.Td>
+              <Table.Tr key={c.id} data-href={`/clients/${c.id}`} onClick={(e) => { if (!(e.target as HTMLElement).closest('a')) void navigate(`/clients/${c.id}`); }}>
+                <Table.Td>
+                  <Anchor component={Link} to={`/clients/${c.id}`} className="ic-primary" c="inherit" underline="never">{c.name}</Anchor>
+                  <div className="ic-secondary">{tx(en.clients.types, c.type)}</div>
+                </Table.Td>
+                <Table.Td><span className="ic-mono" style={{ color: 'var(--text)' }}>{c.reg_number ?? '—'}</span></Table.Td>
+                <Table.Td className="ic-secondary">{c.legal_address ?? '—'}</Table.Td>
+                <Table.Td style={{ fontVariantNumeric: 'tabular-nums' }}>{c.devices_total ?? 0}</Table.Td>
+                <Table.Td>{c.alerts_open ? <span className="ic-badge crit plain">{c.alerts_open}</span> : <span className="ic-secondary">0</span>}</Table.Td>
               </Table.Tr>
             ))}
           </Table.Tbody>
         </Table>
       </Table.ScrollContainer>
+      <Stack p={items.length ? 0 : 'md'} gap="sm">
       {list.isSuccess && !items.length && <Text c="dimmed">{t('clients.empty')}</Text>}
       {list.isError && !list.isFetchNextPageError && <LoadError error={list.error} retry={() => list.refetch()} />}
       {list.isFetchNextPageError && <LoadError error={list.error} retry={() => list.fetchNextPage()} />}
       {list.isPending && <Text c="dimmed">{t('common.loading')}</Text>}
-      {list.hasNextPage && <Group><Button variant="default" onClick={() => void list.fetchNextPage()} loading={list.isFetchingNextPage}>{t('common.loadMore')}</Button></Group>}
+      {list.hasNextPage && <Group p="md"><Button variant="default" onClick={() => void list.fetchNextPage()} loading={list.isFetchingNextPage}>{t('common.loadMore')}</Button></Group>}
+      </Stack>
+      </div>
       {creating && <ClientModal onClose={() => setCreating(false)} onDone={() => qc.invalidateQueries({ queryKey: ['clients'] })} />}
     </Stack>
   );
@@ -129,12 +139,12 @@ export function ClientPage() {
             }}>{t('common.delete')}</ConfirmButton>
           )}
         </Group>
-      }>{c.name}</PageTitle>
-      <Text c="dimmed">{[tx(en.clients.types, c.type), c.reg_number, c.legal_address].filter(Boolean).join(' · ')}</Text>
+      } back={<Group gap={6} mb={8}><Anchor component={Link} to="/clients" c="dimmed" size="sm">‹ {t('clients.title')}</Anchor></Group>}
+        eyebrow={tx(en.clients.types, c.type)} sub={[c.reg_number, c.legal_address].filter(Boolean).join(' · ') || ' '}>{c.name}</PageTitle>
       <SimpleGrid cols={{ base: 1, lg: 2 }}>
-        <Card withBorder>
+        <Card padding={22}>
           <Group justify="space-between" mb="xs">
-            <Title order={4}>{t('clients.addresses')}</Title>
+            <Title order={4} className="ic-card-title">{t('clients.addresses')}</Title>
             {can(role, 'createAddress') && <Button size="xs" variant="light" onClick={() => setAddress('new')}>{t('clients.addAddress')}</Button>}
           </Group>
           <Table.ScrollContainer minWidth={480}>
@@ -168,9 +178,9 @@ export function ClientPage() {
             </Table>
           </Table.ScrollContainer>
         </Card>
-        <Card withBorder>
+        <Card padding={22}>
           <Group justify="space-between" mb="xs">
-            <Title order={4}>{t('clients.contacts')}</Title>
+            <Title order={4} className="ic-card-title">{t('clients.contacts')}</Title>
             {can(role, 'createContact') && <Button size="xs" variant="light" onClick={() => setContact('new')}>{t('clients.addContact')}</Button>}
           </Group>
           <Table.ScrollContainer minWidth={480}>
@@ -200,8 +210,8 @@ export function ClientPage() {
           </Table.ScrollContainer>
         </Card>
       </SimpleGrid>
-      <Card withBorder>
-        <Title order={4} mb="xs">{t('clients.devices')}</Title>
+      <Card padding={22}>
+        <Title order={4} className="ic-card-title" mb="xs">{t('clients.devices')}</Title>
         {c.devices.length ? <DeviceTable items={c.devices} showClient={false} /> : <Text c="dimmed">{t('devices.empty')}</Text>}
       </Card>
       {editing && <ClientModal client={c} onClose={() => setEditing(false)} onDone={refresh} />}

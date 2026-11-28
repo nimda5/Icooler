@@ -2,12 +2,12 @@
 // идентификаторы и модель, клиент и адрес, перенос (V-014), жизненный цикл и аренда/покупка (V-013, P-09), история.
 // Состояние (online, тех. состояние, прошивка, фильтр, алерты) приходит от устройства — до первой связи его нет.
 import { useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import {
   Alert, Anchor, Badge, Button, Card, Checkbox, Group, Modal, NumberInput, Select, SimpleGrid, Stack, Table, Text, Textarea, TextInput, Title,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { IconArrowsSort } from '@tabler/icons-react';
+import { IconArrowsSort, IconDroplet, IconFilter, IconFlame, IconMapPin, IconPencil, IconPlus, IconSearch, IconSnowflake } from '@tabler/icons-react';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, ok, type Schemas } from '../api/client';
 import { useSession } from '../auth/session';
@@ -31,55 +31,64 @@ export const OWNERSHIP_OPTS = opts(en.devices.ownerships);
 const WATER_OPTS = opts(en.devices.waterSources);
 const SORT_OPTS = opts(en.devices.sorts);
 export const ALERT_OPTS = opts(en.devices.alertTypes);
-const STATE_COLOR: Record<string, string> = { operational: 'teal', warning: 'yellow', fault: 'red', offline: 'gray' };
-const BADGE = { root: { overflow: 'visible', flexShrink: 0 }, label: { overflow: 'visible', textOverflow: 'clip' } } as const;
+const STATE_CLASS: Record<string, string> = { operational: 'ok', warning: 'warn', fault: 'crit', offline: 'off' };
+export const STATE_DOT: Record<string, string> = { operational: 'var(--ok)', warning: 'var(--warn)', fault: 'var(--crit)', offline: 'var(--off)' };
 
 /** '' → null: пустое необязательное поле формы уходит в API как «нет значения». */
 export const orNull = (v: string): string | null => (v.trim() ? v.trim() : null);
 
 export function StateBadge({ d }: { d: Pick<Device, 'state' | 'last_seen_at'> }) {
   const never = d.state === 'offline' && !d.last_seen_at;
-  return (
-    <Badge color={STATE_COLOR[d.state]} variant="light" styles={BADGE} title={never ? t('devices.neverSeen') : undefined}>
-      {tx(en.devices.states, d.state)}
-    </Badge>
-  );
+  return <span className={`ic-badge ${STATE_CLASS[d.state]}`} title={never ? t('devices.neverSeen') : undefined}>{tx(en.devices.states, d.state)}</span>;
 }
 
 export const modelLabel = (m: Model): string =>
   [tx(en.devices.waterSources, m.water_source), m.variant, m.carbonated ? 'CO₂' : null, m.sku].filter(Boolean).join(' · ');
 
 const pct = (v: number | null | undefined) => (v == null ? '—' : `${Math.round(v)} %`);
-const placeOf = (d: Pick<ListItem, 'address' | 'floor' | 'place'>) =>
-  [d.address, d.floor ? `${t('clients.floor')} ${d.floor}` : null, d.place].filter(Boolean).join(', ') || '—';
+/** Место у клиента — коротко, как в демо: «Reception», иначе этаж, иначе адрес. */
+const spotOf = (d: Pick<ListItem, 'address' | 'floor' | 'place'>) =>
+  d.place ?? (d.floor ? `${t('clients.floor')} ${d.floor}` : d.address) ?? t('devices.stock');
 
-/** Таблица устройств: реестр и карточка клиента (V-024). */
+/** Таблица устройств как в демо: устройство (клиент · место · серийник), модель, владение, статус, показатели. */
 export function DeviceTable({ items, showClient = true }: { items: ListItem[]; showClient?: boolean }) {
+  const navigate = useNavigate();
   return (
-    <Table.ScrollContainer minWidth={900}>
-      <Table striped highlightOnHover>
+    <Table.ScrollContainer minWidth={980}>
+      <Table>
         <Table.Thead>
           <Table.Tr>
-            <Table.Th>{t('devices.serial')}</Table.Th><Table.Th>{t('devices.deviceId')}</Table.Th><Table.Th>{t('devices.model')}</Table.Th>
-            {showClient && <Table.Th>{t('devices.client')}</Table.Th>}
-            <Table.Th>{t('devices.address')}</Table.Th><Table.Th>{t('devices.lifecycle')}</Table.Th><Table.Th>{t('devices.state')}</Table.Th>
-            <Table.Th>{t('devices.lastSeen')}</Table.Th><Table.Th>{t('devices.filter')}</Table.Th><Table.Th>{t('devices.liters')}</Table.Th><Table.Th>{t('devices.alerts')}</Table.Th>
+            <Table.Th>{t('devices.device')}</Table.Th><Table.Th>{t('devices.model')}</Table.Th><Table.Th>{t('devices.ownership')}</Table.Th>
+            <Table.Th>{t('devices.state')}</Table.Th><Table.Th>{t('devices.lifecycle')}</Table.Th><Table.Th>{t('devices.filter')}</Table.Th>
+            <Table.Th>{t('devices.liters')}</Table.Th><Table.Th>{t('devices.fw')}</Table.Th><Table.Th>{t('devices.lastSeen')}</Table.Th>
+            <Table.Th>{t('devices.alerts')}</Table.Th>
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
           {items.map((d) => (
-            <Table.Tr key={d.id}>
-              <Table.Td><Anchor component={Link} to={`/devices/${d.id}`}>{d.serial}</Anchor></Table.Td>
-              <Table.Td><Text size="sm" ff="monospace" style={{ whiteSpace: 'nowrap' }}>{d.device_id}</Text></Table.Td>
-              <Table.Td>{modelLabel(d.model)}</Table.Td>
-              {showClient && <Table.Td>{d.client_id ? <Anchor component={Link} to={`/clients/${d.client_id}`}>{d.client_name}</Anchor> : '—'}</Table.Td>}
-              <Table.Td>{placeOf(d)}</Table.Td>
+            <Table.Tr key={d.id} data-href={`/devices/${d.id}`} onClick={(e) => { if (!(e.target as HTMLElement).closest('a')) void navigate(`/devices/${d.id}`); }}>
+              <Table.Td style={{ minWidth: 230 }}>
+                <div className="ic-primary">
+                  {showClient && d.client_id ? <Anchor component={Link} to={`/clients/${d.client_id}`} c="inherit" fw={600}>{d.client_name}</Anchor>
+                    : showClient ? t('devices.stock') : spotOf(d)}
+                </div>
+                <div className="ic-secondary">
+                  {showClient ? (d.client_name ? `${spotOf(d)} · ` : '') : d.address ? `${d.address} · ` : ''}
+                  <Anchor component={Link} to={`/devices/${d.id}`} className="ic-mono" c="inherit">{d.serial}</Anchor>
+                </div>
+              </Table.Td>
+              <Table.Td style={{ minWidth: 170 }}>
+                <div className="ic-primary" style={{ fontWeight: 560 }}>{tx(en.devices.waterSources, d.model.water_source)} · {d.model.variant}{d.model.carbonated ? ' · CO₂' : ''}</div>
+                <div className="ic-mono">{d.model.sku ?? d.device_id}</div>
+              </Table.Td>
+              <Table.Td><span className="ic-badge outline">{tx(en.devices.ownerships, d.ownership)}</span></Table.Td>
+              <Table.Td><StateBadge d={d} /></Table.Td>
               <Table.Td>{tx(en.devices.lifecycles, d.lifecycle)}</Table.Td>
-              <Table.Td style={{ whiteSpace: 'nowrap' }}><StateBadge d={d} /></Table.Td>
-              <Table.Td>{fmt(d.last_seen_at)}</Table.Td>
-              <Table.Td>{pct(d.filter_left_pct)}</Table.Td>
-              <Table.Td>{d.liters_period == null ? '—' : `${Math.round(d.liters_period)} l`}</Table.Td>
-              <Table.Td>{d.alerts_open ? <Badge color="red" variant="light" styles={BADGE}>{d.alerts_open}</Badge> : '0'}</Table.Td>
+              <Table.Td style={{ fontVariantNumeric: 'tabular-nums' }}>{pct(d.filter_left_pct)}</Table.Td>
+              <Table.Td style={{ fontVariantNumeric: 'tabular-nums' }}>{d.liters_period == null ? '—' : `${d.liters_period.toFixed(1)} L`}</Table.Td>
+              <Table.Td><span className="ic-mono" style={{ color: 'var(--text)' }}>{d.fw ?? '—'}</span></Table.Td>
+              <Table.Td style={{ whiteSpace: 'nowrap' }}>{d.last_seen_at ? fmt(d.last_seen_at) : <span className="ic-secondary">{t('common.never')}</span>}</Table.Td>
+              <Table.Td>{d.alerts_open ? <span className="ic-badge crit plain">{d.alerts_open}</span> : <span className="ic-secondary">0</span>}</Table.Td>
             </Table.Tr>
           ))}
         </Table.Tbody>
@@ -104,28 +113,48 @@ export function DevicesPage() {
     getNextPageParam: (p) => p.next_cursor ?? undefined,
   });
   const items = list.data?.pages.flatMap((p) => p.items ?? []) ?? [];
+  const stateChips = [{ value: null as string | null, label: t('common.all'), dot: null as string | null },
+    ...STATE_OPTS.map((o) => ({ value: o.value as string | null, label: o.label, dot: STATE_DOT[o.value]! }))];
   return (
-    <Stack>
-      <PageTitle right={can(role, 'createDevice') && <Button onClick={() => setCreating(true)}>{t('devices.create')}</Button>}>{t('devices.title')}</PageTitle>
-      <Group align="flex-end">
-        <TextInput placeholder={t('common.search')} aria-label={t('common.search')} value={q} onChange={(e) => setQ(e.currentTarget.value)} />
-        <Select placeholder={t('devices.client')} aria-label={t('devices.client')} data={clients.data ?? []} value={f['client_id'] ?? null} onChange={set('client_id')} searchable clearable />
-        <Select placeholder={t('devices.lifecycle')} aria-label={t('devices.lifecycle')} data={LIFECYCLE_OPTS} value={f['lifecycle'] ?? null} onChange={set('lifecycle')} clearable />
-        <Select placeholder={t('devices.state')} aria-label={t('devices.state')} data={STATE_OPTS} value={f['state'] ?? null} onChange={set('state')} clearable />
-        <Select placeholder={t('devices.ownership')} aria-label={t('devices.ownership')} data={OWNERSHIP_OPTS} value={f['ownership'] ?? null} onChange={set('ownership')} clearable />
-        <Select placeholder={t('devices.waterSource')} aria-label={t('devices.waterSource')} data={WATER_OPTS} value={f['model'] ?? null} onChange={set('model')} clearable />
-        <Select placeholder={t('devices.alertType')} aria-label={t('devices.alertType')} data={ALERT_OPTS} value={f['alert_type'] ?? null} onChange={set('alert_type')} clearable />
-        <NumberInput placeholder={t('devices.filterMax')} aria-label={t('devices.filterMax')} min={0} max={100} w={150} value={f['filter_left_max_pct'] ?? ''}
-          onChange={(v) => set('filter_left_max_pct')(v === '' ? null : String(v))} />
-        <TextInput placeholder={t('clients.region')} aria-label={t('clients.region')} value={f['region'] ?? ''} onChange={(e) => set('region')(e.currentTarget.value.trim() || null)} />
-        <Select aria-label={t('devices.sort')} leftSection={<IconArrowsSort size={16} />} data={SORT_OPTS} value={f['sort'] ?? '-created_at'} onChange={set('sort')} allowDeselect={false} />
-      </Group>
-      <DeviceTable items={items} />
-      {list.isSuccess && !items.length && <Text c="dimmed">{t('devices.empty')}</Text>}
-      {list.isError && !list.isFetchNextPageError && <LoadError error={list.error} retry={() => list.refetch()} />}
-      {list.isFetchNextPageError && <LoadError error={list.error} retry={() => list.fetchNextPage()} />}
-      {list.isPending && <Text c="dimmed">{t('common.loading')}</Text>}
-      {list.hasNextPage && <Group><Button variant="default" onClick={() => void list.fetchNextPage()} loading={list.isFetchingNextPage}>{t('common.loadMore')}</Button></Group>}
+    <Stack gap={0}>
+      <PageTitle sub={list.isSuccess ? `${items.length}${list.hasNextPage ? '+' : ''} ${t('devices.shown')}` : ' '}
+        right={can(role, 'createDevice') && <Button leftSection={<IconPlus size={16} />} onClick={() => setCreating(true)}>{t('devices.create')}</Button>}>
+        {t('devices.title')}
+      </PageTitle>
+      <div className="ic-card">
+        <Stack gap="sm" p="md" pb="sm">
+          <Group gap="sm">
+            <TextInput placeholder={t('devices.searchHint')} aria-label={t('common.search')} leftSection={<IconSearch size={16} />} value={q}
+              onChange={(e) => setQ(e.currentTarget.value)} style={{ flex: '1 1 280px' }} />
+            <Select placeholder={t('devices.allClients')} aria-label={t('devices.client')} data={clients.data ?? []} value={f['client_id'] ?? null} onChange={set('client_id')} searchable clearable w={190} />
+            <Select placeholder={t('devices.allModels')} aria-label={t('devices.waterSource')} data={WATER_OPTS} value={f['model'] ?? null} onChange={set('model')} clearable w={170} />
+            <Select placeholder={t('devices.allOwnership')} aria-label={t('devices.ownership')} data={OWNERSHIP_OPTS} value={f['ownership'] ?? null} onChange={set('ownership')} clearable w={170} />
+            <TextInput placeholder={t('devices.allRegions')} aria-label={t('clients.region')} value={f['region'] ?? ''} onChange={(e) => set('region')(e.currentTarget.value.trim() || null)} w={150} />
+          </Group>
+          <Group gap="sm">
+            <Select placeholder={t('devices.allLifecycles')} aria-label={t('devices.lifecycle')} data={LIFECYCLE_OPTS} value={f['lifecycle'] ?? null} onChange={set('lifecycle')} clearable w={170} />
+            <Select placeholder={t('devices.allAlerts')} aria-label={t('devices.alertType')} data={ALERT_OPTS} value={f['alert_type'] ?? null} onChange={set('alert_type')} clearable w={170} />
+            <NumberInput placeholder={t('devices.filterMax')} aria-label={t('devices.filterMax')} min={0} max={100} w={150} value={f['filter_left_max_pct'] ?? ''}
+              onChange={(v) => set('filter_left_max_pct')(v === '' ? null : String(v))} />
+            <Select aria-label={t('devices.sort')} leftSection={<IconArrowsSort size={16} />} data={SORT_OPTS} value={f['sort'] ?? '-created_at'} onChange={set('sort')} allowDeselect={false} w={190} />
+          </Group>
+          <div className="ic-chips" role="group" aria-label={t('devices.state')}>
+            {stateChips.map((c) => (
+              <button key={c.label} type="button" className="ic-chip" aria-pressed={(f['state'] ?? null) === c.value} onClick={() => set('state')(c.value)}>
+                {c.dot && <span className="dot" style={{ background: c.dot }} />}{c.label}
+              </button>
+            ))}
+          </div>
+        </Stack>
+        <DeviceTable items={items} />
+        <Stack p="md" pt={items.length ? 'md' : 0} gap="sm">
+          {list.isSuccess && !items.length && <Text c="dimmed">{t('devices.empty')}</Text>}
+          {list.isError && !list.isFetchNextPageError && <LoadError error={list.error} retry={() => list.refetch()} />}
+          {list.isFetchNextPageError && <LoadError error={list.error} retry={() => list.fetchNextPage()} />}
+          {list.isPending && <Text c="dimmed">{t('common.loading')}</Text>}
+          {list.hasNextPage && <Group><Button variant="default" onClick={() => void list.fetchNextPage()} loading={list.isFetchingNextPage}>{t('common.loadMore')}</Button></Group>}
+        </Stack>
+      </div>
       {creating && <DeviceModal onClose={() => setCreating(false)} onDone={() => qc.invalidateQueries({ queryKey: ['devices'] })} />}
     </Stack>
   );
@@ -190,39 +219,62 @@ export function DevicePage() {
   if (!card.data) return <Text c="dimmed">{t('common.loading')}</Text>;
   const d = card.data;
   const editable = can(role, 'updateDevice');
+  const a = d.address_detail;
+  const cur = d.current;
+  const temp = (v: number | null | undefined) => (v == null ? '—' : v.toFixed(1));
+  const set = (v: number | null | undefined) => (v == null ? '—' : `${Math.round(v)} °C`);
   return (
-    <Stack>
-      <PageTitle right={
-        <Group gap="xs">
-          {editable && <Button variant="default" onClick={() => setModal('edit')}>{t('common.edit')}</Button>}
-          {can(role, 'transferDevice') && <Button variant="default" onClick={() => setModal('transfer')}>{t('devices.transfer')}</Button>}
-          {can(role, 'setLifecycle') && <Button variant="default" onClick={() => setModal('lifecycle')}>{t('devices.changeLifecycle')}</Button>}
-          {can(role, 'setOwnership') && <Button variant="default" onClick={() => setModal('ownership')}>{t('devices.changeOwnership')}</Button>}
-        </Group>
-      }>
-        {d.serial} <StateBadge d={d} />
+    <Stack gap="md">
+      <PageTitle
+        back={<Group gap={6} mb={8} className="ic-secondary"><Anchor component={Link} to="/devices" c="dimmed" size="sm">‹ {t('devices.title')}</Anchor>
+          {d.client && <span>/ {d.client.name}</span>}</Group>}
+        eyebrow={`${modelLabel(d.model)} · ${tx(en.devices.ownerships, d.ownership)}`}
+        sub={<Group gap={8} mt={4}><StateBadge d={d} />{!d.last_seen_at && <span className="ic-badge off plain">{t('devices.neverSeen')}</span>}
+          {d.blocked && <span className="ic-badge crit plain">{t('devices.blocked')}</span>}<span className="ic-mono">{d.serial}</span></Group>}
+        right={
+          <Group gap="xs">
+            {a?.lat != null && a.lng != null && <Button variant="default" leftSection={<IconMapPin size={16} />} component={Link} to={`/map?lat=${a.lat}&lng=${a.lng}`}>{t('devices.showOnMap')}</Button>}
+            {can(role, 'transferDevice') && <Button variant="default" onClick={() => setModal('transfer')}>{t('devices.transfer')}</Button>}
+            {can(role, 'setLifecycle') && <Button variant="default" onClick={() => setModal('lifecycle')}>{t('devices.changeLifecycle')}</Button>}
+            {can(role, 'setOwnership') && <Button variant="default" onClick={() => setModal('ownership')}>{t('devices.changeOwnership')}</Button>}
+            {editable && <Button variant="default" leftSection={<IconPencil size={16} />} onClick={() => setModal('edit')}>{t('common.edit')}</Button>}
+          </Group>
+        }>
+        {d.client ? <>{d.client.name}{a?.place || a?.floor ? <span className="ic-title-muted"> · {a.place ?? `${t('clients.floor')} ${a.floor}`}</span> : null}</> : d.serial}
       </PageTitle>
-      {!d.last_seen_at && <Alert color="gray">{t('devices.neverSeen')}. {t('devices.liveNote')}</Alert>}
-      <SimpleGrid cols={{ base: 1, md: 2 }}>
-        <Card withBorder>
-          <Title order={4} mb="xs">{t('devices.identity')}</Title>
+      {!d.last_seen_at && <Alert color="gray" variant="light">{t('devices.neverSeen')}. {t('devices.liveNote')}</Alert>}
+      <SimpleGrid cols={{ base: 2, md: 4 }}>
+        <Kpi label={t('devices.kpi.cold')} icon={<IconSnowflake size={16} color="var(--cold)" />} tint="var(--cold-soft)" value={temp(cur?.t_cold)} unit="°C" foot={`${t('devices.kpi.setpoint')} ${set(cur?.t_cold_set)}`} />
+        <Kpi label={t('devices.kpi.hot')} icon={<IconFlame size={16} color="var(--hot)" />} tint="var(--hot-soft)" value={temp(cur?.t_hot)} unit="°C" foot={`${t('devices.kpi.setpoint')} ${set(cur?.t_hot_set)}`} />
+        <Kpi label={t('devices.kpi.water')} icon={<IconDroplet size={16} />} tint="var(--elev-3)" value={cur?.water_total_l == null ? '—' : String(Math.round(cur.water_total_l))} unit="L" foot={t('devices.kpi.waterFoot')} />
+        <Kpi label={t('devices.kpi.filter')} icon={<IconFilter size={16} color="var(--ok)" />} tint="var(--ok-soft)" value={d.filter ? String(Math.round(d.filter.left_pct)) : '—'} unit="%"
+          foot={d.filter?.forecast_at ? `≈ ${new Date(d.filter.forecast_at).toLocaleDateString()}` : t('devices.kpi.noData')} bar={d.filter?.left_pct} />
+      </SimpleGrid>
+      <SimpleGrid cols={{ base: 1, md: 3 }}>
+        <div className="ic-card" style={{ padding: 22 }}>
+          <Title order={4} className="ic-card-title" mb="md">{t('devices.identity')}</Title>
           <Facts rows={[
-            [t('devices.deviceId'), <Text key="id" ff="monospace" size="sm">{d.device_id}</Text>], [t('devices.serial'), d.serial], [t('devices.imei'), d.imei],
-            [t('devices.model'), modelLabel(d.model)], [t('devices.hw'), d.hw], [t('devices.fw'), d.fw], [t('devices.description'), d.description],
-            [t('common.created'), fmt(d.created_at)],
+            [t('devices.serial'), <span key="s" className="ic-mono" style={{ color: 'var(--text)' }}>{d.serial}</span>],
+            [t('devices.deviceId'), <span key="id" className="ic-mono" style={{ color: 'var(--text)' }}>{d.device_id}</span>],
+            [t('devices.imei'), d.imei], [t('devices.model'), modelLabel(d.model)], [t('devices.hw'), d.hw], [t('devices.fw'), d.fw],
+            [t('devices.lifecycle'), tx(en.devices.lifecycles, d.lifecycle)], [t('devices.description'), d.description], [t('common.created'), fmt(d.created_at)],
           ]} />
-        </Card>
-        <Card withBorder>
-          <Title order={4} mb="xs">{t('devices.placement')}</Title>
+        </div>
+        <div className="ic-card" style={{ padding: 22 }}>
+          <Title order={4} className="ic-card-title" mb="md">{t('devices.placement')}</Title>
           <Facts rows={[
             [t('devices.client'), d.client ? <Anchor key="c" component={Link} to={`/clients/${d.client.id}`}>{d.client.name}</Anchor> : t('devices.stock')],
-            [t('devices.address'), d.address_detail?.address], [t('clients.region'), d.address_detail?.region],
-            [t('clients.floor'), d.address_detail?.floor], [t('clients.place'), d.address_detail?.place],
-            [t('devices.lifecycle'), tx(en.devices.lifecycles, d.lifecycle)], [t('devices.ownership'), tx(en.devices.ownerships, d.ownership)],
-            [t('devices.lastSeen'), fmt(d.last_seen_at)], [t('devices.filter'), pct(d.filter?.left_pct)], [t('devices.alerts'), String(d.alerts_open ?? 0)],
-            ...(d.blocked ? [[t('common.status'), t('devices.blocked')] as [string, string]] : []),
+            [t('devices.address'), a?.address], [t('clients.region'), a?.region], [t('clients.floor'), a?.floor], [t('clients.place'), a?.place],
+            [t('clients.accessNote'), a?.access_note], [t('devices.ownership'), tx(en.devices.ownerships, d.ownership)],
           ]} />
-        </Card>
+        </div>
+        <div className="ic-card" style={{ padding: 22 }}>
+          <Title order={4} className="ic-card-title" mb="md">{t('devices.connectivity')}</Title>
+          <Facts rows={[
+            [t('common.status'), d.online ? t('devices.online') : t('devices.offline')], [t('devices.lastSeen'), fmt(d.last_seen_at)],
+            [t('devices.signal'), cur?.rsrp != null ? `${cur.rsrp} dBm` : null], [t('devices.carrier'), cur?.operator], [t('devices.alerts'), String(d.alerts_open ?? 0)],
+          ]} />
+        </div>
       </SimpleGrid>
       {can(role, 'getDeviceHistory') && <History id={id} card={d} />}
       {modal === 'edit' && <DeviceModal device={d} onClose={() => setModal(null)} onDone={refresh} />}
@@ -232,15 +284,23 @@ export function DevicePage() {
   );
 }
 
+/** Плитка показателя, как в демо: подпись со значком, крупное значение, подпись снизу (и полоска для ресурса фильтра). */
+function Kpi({ label, icon, tint, value, unit, foot, bar }: { label: string; icon: React.ReactNode; tint: string; value: string; unit: string; foot: string; bar?: number | undefined }) {
+  return (
+    <div className="ic-card ic-kpi">
+      <div className="ic-kpi-label">{label}<span className="ic-kpi-icon" style={{ background: tint }}>{icon}</span></div>
+      <div className="ic-kpi-value">{value}{value !== '—' && <small>{unit}</small>}</div>
+      <div className="ic-kpi-foot">{foot}</div>
+      {bar != null && <div style={{ height: 4, borderRadius: 4, background: 'var(--elev-3)', marginTop: 8 }}><div style={{ width: `${Math.max(0, Math.min(100, bar))}%`, height: 4, borderRadius: 4, background: 'var(--ok)' }} /></div>}
+    </div>
+  );
+}
+
 function Facts({ rows }: { rows: [string, React.ReactNode][] }) {
   return (
-    <Table withRowBorders={false} verticalSpacing={4}>
-      <Table.Tbody>
-        {rows.map(([k, v]) => (
-          <Table.Tr key={k}><Table.Td c="dimmed" w="40%">{k}</Table.Td><Table.Td>{v ?? '—'}</Table.Td></Table.Tr>
-        ))}
-      </Table.Tbody>
-    </Table>
+    <dl className="ic-facts" style={{ margin: 0 }}>
+      {rows.map(([k, v]) => [<dt key={`${k}-k`}>{k}</dt>, <dd key={`${k}-v`}>{v ?? '—'}</dd>])}
+    </dl>
   );
 }
 
@@ -325,8 +385,8 @@ function History({ id, card }: { id: string; card: Card }) {
   };
   const items = list.data?.pages.flatMap((p) => p.items ?? []) ?? [];
   return (
-    <Card withBorder>
-      <Title order={4} mb="xs">{t('devices.history')}</Title>
+    <div className="ic-card" style={{ padding: 22 }}>
+      <Title order={4} className="ic-card-title" mb="xs">{t('devices.history')}</Title>
       {list.isError && <LoadError error={list.error} retry={() => list.refetch()} />}
       {list.isSuccess && !items.length ? <Text c="dimmed">{t('devices.historyEmpty')}</Text> : (
         <Table.ScrollContainer minWidth={640}>
@@ -350,6 +410,6 @@ function History({ id, card }: { id: string; card: Card }) {
         </Table.ScrollContainer>
       )}
       {list.hasNextPage && <Group mt="xs"><Button variant="default" size="xs" onClick={() => void list.fetchNextPage()}>{t('common.loadMore')}</Button></Group>}
-    </Card>
+    </div>
   );
 }
