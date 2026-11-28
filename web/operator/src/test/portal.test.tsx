@@ -1,47 +1,9 @@
 // Портал оператора с подменённым API: вход, меню по ролям, CSRF, 401, пользователи, настройки, ссылки из писем.
 import { describe, expect, it } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Link, MemoryRouter } from 'react-router';
-import { Providers, makeQueryClient } from '../providers';
-import { App } from '../App';
-import { setFetch, csrf } from '../api/client';
-
-type Handler = (req: Request, body: unknown) => { status: number; body?: unknown } | Promise<{ status: number; body?: unknown }>;
-interface Call { method: string; path: string; body: unknown; headers: Headers }
-
-function fakeApi(routes: Record<string, Handler>) {
-  const calls: Call[] = [];
-  const f = async (input: RequestInfo | URL, init?: RequestInit) => {
-    const req = input instanceof Request ? input : new Request(new URL(String(input), 'http://localhost'), init);
-    const url = new URL(req.url, 'http://localhost');
-    const path = url.pathname.replace(/^\/api\/v1/, '');
-    const text = req.method === 'GET' ? '' : await req.clone().text();
-    const body = text ? JSON.parse(text) : undefined;
-    calls.push({ method: req.method, path: path + url.search, body, headers: req.headers });
-    const key = Object.keys(routes).find((k) => {
-      const [m, p] = k.split(' ');
-      return m === req.method && new RegExp(`^${p!.replace(/:\w+/g, '[^/]+')}$`).test(path);
-    });
-    const r = key ? await routes[key]!(req, body) : { status: 404, body: { type: 'x', title: 'Not Found', status: 404 } };
-    return new Response(r.body === undefined ? null : JSON.stringify(r.body), {
-      status: r.status, headers: { 'content-type': r.status >= 400 ? 'application/problem+json' : 'application/json' },
-    });
-  };
-  setFetch(f as typeof fetch);
-  return calls;
-}
-
-const profile = (role: string) => ({ id: '00000000-0000-4000-8000-000000000001', email: `${role}@a.example`, name: `${role} user`, language: 'en', role, tenant_id: role === 'sig_admin' ? null : '11111111-1111-4111-8111-111111111111' });
-const page = (items: unknown[]) => ({ items, next_cursor: null });
-
-function renderAt(path: string) {
-  return render(
-    <MemoryRouter initialEntries={[path]}>
-      <Providers client={makeQueryClient()}><App /><Link to="/profile" hidden>test:go-profile</Link></Providers>
-    </MemoryRouter>,
-  );
-}
+import { csrf } from '../api/client';
+import { fakeApi, page, profile, renderAt } from './fake';
 
 describe('вход', () => {
   it('без сессии — страница входа; неверный пароль — сообщение; верный — CSRF сохранён и первый доступный раздел', async () => {
